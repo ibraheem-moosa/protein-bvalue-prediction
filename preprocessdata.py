@@ -1,7 +1,7 @@
 import sys
 if len(sys.argv) < 6:
     print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X.txt y.txt')
-    print('Example: python3 preprocessdata.py data 350 15 X.txt y.txt')
+    print('Example: python3 preprocessdata.py data 350 15 30 X.txt y.txt')
     exit()
 
 import time
@@ -46,7 +46,7 @@ def seq_to_freq(seq):
     freq = [0.0] * 21
     for aa in seq:
         freq[aa] += 1
-    freq = [freq[i] / len(seq) for i in range(len(seq))]
+    freq = [freq[i] / len(seq) for i in range(len(freq))]
     return freq
 
 def seq_to_local_freq(seq, window_size):
@@ -85,9 +85,9 @@ for f in files:
         # relative position
         data.append(pos)
         # global amino acid frequency
-        data.extend(aa_freq)
+        data.extend(global_freq)
         # local amino acid frequencey
-        data.extend(local_aa_freqs[i])
+        data.extend(local_freqs[i])
     X.extend(input_data)
     bfactors = np.array(bfactors)
     bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
