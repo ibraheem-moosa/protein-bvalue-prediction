@@ -4,26 +4,17 @@ print(time.strftime('%Y-%m-%d %H:%M'))
 import sys
 import numpy as np
 
-if len(sys.argv) < 5:
-    print('Usage: python3 regression.py num_of_data input.txt input_dim target.txt')
+if len(sys.argv) < 3:
+    print('Usage: python3 regression.py X y')
     exit()
-
-X = np.empty((int(sys.argv[1]), int(sys.argv[3])), dtype=np.float32)
+from scipy.sparse import load_npz
+X = load_npz(sys.argv[1])
 print(X.shape)
-y = np.empty((X.shape[0],), dtype=np.float32)
+from numpy import load
+y = load(sys.argv[2])
+y = y['y']
 print(y.shape)
 
-
-with open(sys.argv[2]) as f:
-    for i, line in enumerate(f):
-        X[i] = np.array(list(map(float, line.split())))
-
-
-with open(sys.argv[4]) as f:
-    for i, line in enumerate(f):
-        y[i] = (float(line))
-
-y = (y - np.mean(y)) / np.std(y)
 # data input and preprocessing done
 '''
 from sklearn.dummy import DummyRegressor
@@ -33,10 +24,10 @@ from sklearn.neural_network import MLPRegressor
 
 #dummy_clf = DummyRegressor(strategy='mean')
 
-clf = MLPRegressor(hidden_layer_sizes=(100,), activation='relu', 
-                    alpha=0.1, batch_size=256, early_stopping=True, 
-                    learning_rate_init=0.01, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
-                    max_iter=200, tol=1e-8, verbose=True, validation_fraction=0.1)
+clf = MLPRegressor(hidden_layer_sizes=(32, 32, 8), activation='relu', 
+                    alpha=0.1, batch_size=64, early_stopping=False, 
+                    learning_rate_init=0.001, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
+                    max_iter=200, tol=1e-8, verbose=True, validation_fraction=0.2)
 
 print(clf.hidden_layer_sizes)
 #clf = BaggingRegressor(clf, n_estimators=10, 
