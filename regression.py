@@ -19,11 +19,8 @@ if len(sys.argv) == 4:
 else:
     seed = None
 # data input and preprocessing done
-from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import BaggingRegressor
 from sklearn.neural_network import MLPRegressor
-
-#dummy_clf = DummyRegressor(strategy='mean')
 
 clf = MLPRegressor(hidden_layer_sizes=(512,32,24,16), activation='relu', 
                     alpha=0.1, batch_size=256, early_stopping=True, 
@@ -37,10 +34,11 @@ clf = BaggingRegressor(clf, n_estimators=10,
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.8)
 
-#import gc
-#gc.collect()
-
 clf.fit(X_train, y_train)
+# there is sudden spike in memory consumption here
+import gc
+gc.collect()
+
 y_test_pred = clf.predict(X_test)
 y_train_pred = clf.predict(X_train)
 
@@ -68,11 +66,6 @@ scores = cross_validate(clf, X, y, cv=10, verbose=5, scoring=scoring)
 print(scores)
 #print(score)
 '''
-#from math import sqrt
-#print(sum(score) / len(score))
-#print(sqrt(-sum(score)/len(score)))
-#print(sum(y)/len(y))
-
 # grid search
 
 '''
@@ -82,7 +75,7 @@ p_grid = {'learning_rate_init': [0.001],
           'batch_size': [256, 512],
           'hidden_layer_sizes': [(8,), (16,), (32,), (64,)]}
 
-gscv = GridSearchCV(clf, param_grid=p_grid, scoring={'Pearson':pcc,'MSE':mse}, 
+gscv = GridSearchCV(clf, param_grid=p_grid, scoring={'Pearson':pcc_scorer,'MSE':mse_scorer}, 
                         verbose=5, cv=3, refit='Pearson', n_jobs=1)
 
 
@@ -97,11 +90,3 @@ with open('grid_search_one_layer_ws_twelve.csv', 'a') as f:
 
 print('Grid Search CV Done')
 '''
-
-
-#clf.fit(X,y)
-#print(clf.n_features_)
-#print(clf.feature_importances_)
-#important_features = [i for i in range(clf.n_features_) if clf.feature_importances_[i] > 1e-2]
-#print(important_features)
-
