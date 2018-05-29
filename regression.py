@@ -19,22 +19,20 @@ if len(sys.argv) == 4:
 else:
     seed = None
 # data input and preprocessing done
-'''
 from sklearn.dummy import DummyRegressor
-rom sklearn.ensemble import BaggingRegressor
-'''
+from sklearn.ensemble import BaggingRegressor
 from sklearn.neural_network import MLPRegressor
 
 #dummy_clf = DummyRegressor(strategy='mean')
 
-clf = MLPRegressor(hidden_layer_sizes=(128,16,8), activation='relu', 
+clf = MLPRegressor(hidden_layer_sizes=(512,32,24,16), activation='relu', 
                     alpha=0.1, batch_size=256, early_stopping=True, 
-                    learning_rate_init=0.005, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
+                    learning_rate_init=0.003, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
                     max_iter=100, tol=1e-8, verbose=True, validation_fraction=0.1, random_state=seed)
 
 print(clf)
-#clf = BaggingRegressor(clf, n_estimators=10, 
-#                       max_samples=0.75, verbose=5, n_jobs=1)
+clf = BaggingRegressor(clf, n_estimators=10, 
+                       max_samples=0.75, verbose=5, n_jobs=1)
 
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.8)
@@ -58,18 +56,19 @@ print(p(y_train, y_train_pred))
 print(mean_squared_error(y_train, y_train_pred))
 print(p(y_test, y_test_pred))
 print(mean_squared_error(y_test, y_test_pred))
-
+'''
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import cross_validate
-#mse_scorer = make_scorer(mean_squared_error, greater_is_better=False)
-#pcc_scorer = make_scorer(p)
-#scoring = {'mse_scorer':mse_scorer, 'pcc_scorer':pcc_scorer}
+mse_scorer = make_scorer(mean_squared_error, greater_is_better=False)
+pcc_scorer = make_scorer(p)
+scoring = {'mse_scorer':mse_scorer, 'pcc_scorer':pcc_scorer}
 #score = cross_val_score(clf, X, y, cv=5, verbose=1, scoring=pcc_scorer)
-#scores = cross_validate(clf, X, y, cv=10, verbose=5, scoring=scoring)
-#print(scores)
-#from math import sqrt
+scores = cross_validate(clf, X, y, cv=10, verbose=5, scoring=scoring)
+print(scores)
 #print(score)
+'''
+#from math import sqrt
 #print(sum(score) / len(score))
 #print(sqrt(-sum(score)/len(score)))
 #print(sum(y)/len(y))
