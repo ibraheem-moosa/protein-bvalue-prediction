@@ -1,7 +1,7 @@
 import sys
 if len(sys.argv) < 6:
     print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X.txt y.txt')
-    print('Example: python3 preprocessdata.py data 350 15 30 X.txt y.txt')
+    print('Example: python3 preprocessdata.py data 350 15 30 X y')
     exit()
 
 import time
@@ -15,7 +15,10 @@ from collections import Counter
 
 num_of_proteins = int(sys.argv[2])
 print('Total files: {}'.format(len(os.listdir(sys.argv[1]))))
-files = random.sample(os.listdir(sys.argv[1]), num_of_proteins)
+files = os.listdir(sys.argv[1])
+if num_of_proteins < len(files):
+    files = random.sample(files, num_of_proteins)
+
 window_size = int(sys.argv[3])
 local_freq_ws = int(sys.argv[4])
 
@@ -72,7 +75,7 @@ currently_processing = 0
 current_row = 0
 num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) * 21
 for f in files:
-    if currently_processing % 10 == 0:
+    if currently_processing % 100 == 0:
         print('Currently processing: {}'.format(currently_processing))
     currently_processing += 1
     seq = []
@@ -111,14 +114,15 @@ for f in files:
 
         current_row += 1
 
-    bfactors = np.log(np.array(bfactors))
-    bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
+    #bfactors = np.log(np.array(bfactors))
+    #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
     y.extend(bfactors)
 
 from scipy.sparse import csr_matrix
-X = csr_matrix((X_data, (X_row, X_col)), dtype=np.float32, shape=(current_row, num_of_columns))
-y = np.array(y, dtype=np.float32)
-
+X = csr_matrix((X_data, (X_row, X_col)), dtype=np.float64, shape=(current_row, num_of_columns))
+y = np.array(y, dtype=np.float64)
+print(X.shape)
+print(y.shape)
 # function for oneshot representation
 onehot = lambda x : ''.join(['1' if i == x else '0' for i in range(21)])
 # function for binary representation
@@ -150,9 +154,6 @@ with open(sys.argv[6], 'w') as f:
 '''
 np.savez_compressed(sys.argv[6], y=y)
 
-# TODO Use OneHotEncoder which returns sparse matrix
-#       Save to disk this sparse matrix using numpy function
-#       Then load it directly later.
 #from sklearn.preprocessing import OneHotEncoder
 #ohe = OneHotEncoder()
 #X = ohe.fit_transform(X)
