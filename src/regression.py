@@ -6,6 +6,7 @@ import numpy as np
 
 if len(sys.argv) < 3:
     print('Usage: python3 regression.py X y [seed]')
+    print('Example: python3 regression.py X_9_18.npz y_9_18.npz 10')
     exit()
 from scipy.sparse import load_npz
 X = load_npz(sys.argv[1])

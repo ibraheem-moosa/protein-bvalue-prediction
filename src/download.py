@@ -10,8 +10,6 @@ pdb_ids = ''.join([line for line in pdb_ids])
 pdb_ids = pdb_ids.split(',')
 pdb_ids = list(map(lambda s:s.strip(), pdb_ids))
 
-#existing = os.listdir(sys.argv[2])
-#pdb_ids = [i for i in pdb_ids if i + '.cif' not in existing]
 pdbl = PDBList()
 
 pdbl.download_pdb_files(pdb_ids, pdir=sys.argv[2])

@@ -1,7 +1,7 @@
 import sys
 if len(sys.argv) < 6:
     print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X.txt y.txt')
-    print('Example: python3 preprocessdata.py data 350 15 30 X y')
+    print('Example: python3 preprocessdata.py filtered_data 3484 9 18 X_9_18 y_9_18')
     exit()
 
 import time

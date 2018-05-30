@@ -4,6 +4,7 @@ from Bio.PDB import *
 
 if len(sys.argv) < 2:
     print('Usage: python3 filter.py input_directory output_directory')
+    print('Example: python3 filter.py data filtered_data')
     exit()
 
 p = MMCIFParser()
