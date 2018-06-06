@@ -25,15 +25,15 @@ from sklearn.neural_network import MLPRegressor
 
 clf = MLPRegressor(hidden_layer_sizes=(768,128,64,32,16,16,8), activation='relu', 
                     alpha=0.1, batch_size=256, early_stopping=False, 
-                    learning_rate_init=0.0005, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
+                    learning_rate_init=0.00075, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
                     max_iter=200, tol=1e-8, verbose=True, validation_fraction=0.1, random_state=seed)
 
 print(clf)
-clf = BaggingRegressor(clf, n_estimators=5, 
-                       max_samples=0.8, verbose=5, n_jobs=2)
+#clf = BaggingRegressor(clf, n_estimators=5, 
+#                       max_samples=0.8, verbose=5, n_jobs=2)
 
 from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.8)
+X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.8, random_state=42)
 
 clf.fit(X_train, y_train)
 # there is sudden spike in memory consumption here
@@ -63,6 +63,14 @@ print('Test R2 Score:: {}'.format(clf.score(X_test, y_test)))
 print('Test Data Mean: {} Standard Deviation: {}'.format(np.mean(y_test), np.std(y_test)))
 print('Test Predicted Mean: {} Standard Deviation: {}'.format(np.mean(y_test_pred), np.std(y_test_pred)))
 
+will_save = input('Do you want to save this classifier? [y/N]')
+
+if 'y' in will_save:
+    fname = input('Name of classifier')
+    if len(fname) == 0:
+        fname = 'classifier-' + time.strftime('%Y-%m-%d %H:%M')
+    from sklearn.externals import joblib
+    joblib.dump(clf, fname + '.pkl', compress=9)
 
 '''
 from sklearn.metrics import make_scorer
