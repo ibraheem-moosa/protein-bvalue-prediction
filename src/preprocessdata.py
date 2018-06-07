@@ -1,26 +1,8 @@
-import sys
-if len(sys.argv) < 6:
-    print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X.txt y.txt')
-    print('Example: python3 preprocessdata.py filtered_data 3484 9 18 X_9_18 y_9_18')
-    exit()
-
-import time
-print(time.strftime('%Y-%m-%d %H:%M'))
-
-import os
 from Bio.PDB import Polypeptide
 import numpy as np
 import random
 from collections import Counter
-
-num_of_proteins = int(sys.argv[2])
-print('Total files: {}'.format(len(os.listdir(sys.argv[1]))))
-files = os.listdir(sys.argv[1])
-if num_of_proteins < len(files):
-    files = random.sample(files, num_of_proteins)
-
-window_size = int(sys.argv[3])
-local_freq_ws = int(sys.argv[4])
+import scipy.sparse as scsp
 
 def aa_to_index(aa):
     """
@@ -58,73 +40,96 @@ def seq_to_freq(seq):
 def seq_to_local_freq(seq, window_size):
     local_freqs = []
     for i in range(len(seq)):
-        if i < window_size:
-            local_seq = [20] * (window_size - i) + seq[:i + window_size + 1]
-        elif i + window_size > len(seq) - 1:
-            local_seq = seq[i - window_size:] + [20] * (i + window_size - len(seq) + 1)
-        else:
-            local_seq = seq[i - window_size: i + window_size + 1]
+        local_seq = get_window_at_pos(seq, i, window_size)
         local_freqs.append((seq_to_freq(local_seq)))
     return local_freqs
 
 
-y = []
-X_data = []
-X_ind = []
-X_indptr = []
-X_indptr.append(0)
-
-currently_processing = 0
-current_row = 0
-num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) * 21
-non_zero_elem_per_row = 1 + 21 + 21 + (2 * window_size + 1)
-num_of_rows = 0
-
-for f in files:
-    print(f)
-    if currently_processing % 100 == 0:
-        print('Currently processing: {}'.format(currently_processing))
-    currently_processing += 1
-    seq = []
-    bfactors = []
-    for line in open(os.path.join(sys.argv[1], f)):
-        a, b = line.split()
-        a = a.strip()
-        b = float(b)
-        seq.append(aa_to_index(a))
-        bfactors.append(b)
-    windows = seq_to_windows(seq, window_size)
-    # additional features
+def protein_to_features(seq, ws, local_freq_ws):
+    num_of_columns = 1 + 21 + 21 + (2 * ws + 1) * 21
+    non_zero_elem_per_row = 1 + 21 + 21 + (2 * ws + 1)
+    data = []
+    indices = []
+    indptr = [0]
+    windows = seq_to_windows(seq, ws)
     local_freqs = seq_to_local_freq(seq, local_freq_ws)
     global_freq = seq_to_freq(seq)
     for i in range(len(seq)):
         # relative position
         pos = i / len(seq)
-        X_data.append(pos)
-        X_ind.append(0)
+        data.append(pos)
+        indices.append(0)
         # global amino acid frequency
         for j in range(21):
-            X_data.append(global_freq[j])
-            X_ind.append(1 + j)
+            data.append(global_freq[j])
+            indices.append(1 + j)
         # local amino acid frequency
         for j in range(21):
-            X_data.append(local_freqs[i][j])
-            X_ind.append(1 + 21 + j)
+            data.append(local_freqs[i][j])
+            indices.append(1 + 21 + j)
         # amino acids in window in one hot representation
         for j in range(len(windows[i])):
-            X_data.append(1)
-            X_ind.append(1 + 21 + 21 + j * 21 + windows[i][j])
-        X_indptr.append(X_indptr[-1] +  non_zero_elem_per_row)
-        num_of_rows += 1
-    #bfactors = np.log(np.array(bfactors))
-    #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
-    y.extend(bfactors)
-from scipy.sparse import csr_matrix
-X = csr_matrix((X_data, X_ind, X_indptr), dtype=np.float64, shape=(num_of_rows, num_of_columns))
-y = np.array(y, dtype=np.float64)
-# write X
-from scipy.sparse import save_npz
-save_npz(sys.argv[5], X)
+            data.append(1)
+            indices.append(1 + 21 + 21 + j * 21 + windows[i][j])
+        indptr.append(indptr[-1] +  non_zero_elem_per_row)
+    return scsp.csr_matrix((data, indices, indptr), dtype=np.float64, shape = (len(seq), num_of_columns))
 
-# write y
-np.savez_compressed(sys.argv[6], y=y)
+if __name__ == '__main__':
+
+    import sys
+
+    if len(sys.argv) < 6:
+        print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X.txt [y.txt]')
+        print('Example: python3 preprocessdata.py filtered_data 3484 9 18 X_9_18 y_9_18')
+        exit()
+
+    if len(sys.argv) > 5:
+        target_available = True
+    import time
+    print(time.strftime('%Y-%m-%d %H:%M'))
+
+    import os
+
+    num_of_proteins = int(sys.argv[2])
+    print('Total files: {}'.format(len(os.listdir(sys.argv[1]))))
+    files = os.listdir(sys.argv[1])
+    if num_of_proteins < len(files):
+        files = random.sample(files, num_of_proteins)
+
+    window_size = int(sys.argv[3])
+    local_freq_ws = int(sys.argv[4])
+
+    if target_available:
+        y = []
+    currently_processing = 0
+    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) * 21
+    non_zero_elem_per_row = 1 + 21 + 21 + (2 * window_size + 1)
+
+    X = scsp.csr_matrix((0, num_of_columns))
+    for f in files:
+        print(f)
+        if currently_processing % 100 == 0:
+            print('Currently processing: {}'.format(currently_processing))
+        currently_processing += 1
+        seq = []
+        if target_available:
+            bfactors = []
+        for line in open(os.path.join(sys.argv[1], f)):
+            line = line.split()
+            a = line[0].strip()
+            seq.append(aa_to_index(a))
+            if target_available:
+                b = float(line[1])
+                bfactors.append(b)
+        X = scsp.vstack([X, protein_to_features(seq, window_size, local_freq_ws)])
+        if target_available:
+            #bfactors = np.log(np.array(bfactors))
+            #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
+            y.extend(bfactors)
+
+    # write X
+    scsp.save_npz(sys.argv[5], X)
+    # write y
+    if target_available:
+        y = np.array(y, dtype=np.float64)
+        np.savez_compressed(sys.argv[6], y=y)
