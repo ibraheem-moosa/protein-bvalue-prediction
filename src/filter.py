@@ -12,13 +12,14 @@ p = MMCIFParser()
 for f in os.listdir(sys.argv[1]):
     print('Processing: ' + f)
     s = p.get_structure('X', os.path.join(sys.argv[1], f))
-    o = open(os.path.join(sys.argv[2], f[:-4]), 'w')
     for m in s:
         num_of_chains = len([c for c in m])
         if num_of_chains > 1:
-            print('Skipping')
-            continue
+            print('Num of chains {}'.format(num_of_chains))
+        chain_num = 0
         for c in m:
+            o = open(os.path.join(sys.argv[2], f[:-4] + '-' + str(chain_num)), 'w')
+            chain_num += 1
             for r in c:
                 #print(r.get_id())
                 if Polypeptide.is_aa(r.get_resname()) and 'CA' in r:
@@ -26,5 +27,5 @@ for f in os.listdir(sys.argv[1]):
                     o.write(r.get_resname() + ' ' + str(r['CA'].get_bfactor()) + '\n')
                 #else:
                 #    print('Skipped' + r.get_resname())
-    o.close()
+            o.close()
 
