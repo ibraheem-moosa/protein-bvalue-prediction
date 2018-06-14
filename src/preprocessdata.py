@@ -72,14 +72,13 @@ def protein_to_features(seq, ws, local_freq_ws):
             data.append(1)
             indices.append(1 + 21 + 21 + j * 21 + windows[i][j])
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
-    return scsp.csr_matrix((data, indices, indptr), dtype=np.float64, shape = (len(seq), num_of_columns))
+    return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
 
 if __name__ == '__main__':
 
     import sys
-
     if len(sys.argv) < 6:
-        print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X.txt [y.txt]')
+        print('Usage: python3 preprocessdata.py input_directory output_directory protein_list window_size local_freq_window_size [parse_target]')
         print('Example: python3 preprocessdata.py filtered_data 3484 9 18 X_9_18 y_9_18')
         exit()
 
@@ -90,46 +89,45 @@ if __name__ == '__main__':
 
     import os
 
-    num_of_proteins = int(sys.argv[2])
-    print('Total files: {}'.format(len(os.listdir(sys.argv[1]))))
-    files = os.listdir(sys.argv[1])
-    if num_of_proteins < len(files):
-        files = random.sample(files, num_of_proteins)
+    protein_list = open(sys.argv[3]).read().split(',')
+    print('Total proteins:', len(protein_list))
 
-    window_size = int(sys.argv[3])
-    local_freq_ws = int(sys.argv[4])
+    window_size = int(sys.argv[4])
+    local_freq_ws = int(sys.argv[5])
 
-    if target_available:
-        y = []
+    import mxnet as mx
+
     currently_processing = 0
-    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) * 21
-    non_zero_elem_per_row = 1 + 21 + 21 + (2 * window_size + 1)
-
-    X = scsp.csr_matrix((0, num_of_columns))
-    for f in files:
-        print(f)
+    for protein in protein_list:
+        protein = protein.strip()
+        print(protein)
         if currently_processing % 100 == 0:
             print('Currently processing: {}'.format(currently_processing))
         currently_processing += 1
         seq = []
         if target_available:
             bfactors = []
-        for line in open(os.path.join(sys.argv[1], f)):
+        fname = protein.lower()
+        for line in open(os.path.join(sys.argv[1], fname)):
             line = line.split()
             a = line[0].strip()
             seq.append(aa_to_index(a))
             if target_available:
                 b = float(line[1])
                 bfactors.append(b)
-        X = scsp.vstack([X, protein_to_features(seq, window_size, local_freq_ws)])
+        X = mx.nd.array(protein_to_features(seq, window_size, local_freq_ws))
         if target_available:
             #bfactors = np.log(np.array(bfactors))
             #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
-            y.extend(bfactors)
+            bfactors = np.array(bfactors)
 
-    # write X
-    scsp.save_npz(sys.argv[5], X)
-    # write y
-    if target_available:
-        y = np.array(y, dtype=np.float64)
-        np.savez_compressed(sys.argv[6], y=y)
+        out_fname_suffix = protein.upper() + '_' + str(window_size) + '_' + str(local_freq_ws)
+        # write X
+        #scsp.save_npz(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), X)
+        #np.savez_compressed(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), X=X)
+        mx.nd.save(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), [X])
+        # write y
+        if target_available:
+            #np.savez_compressed(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), y=bfactors)
+            y = mx.nd.array(bfactors)
+            mx.nd.save(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), [y])
