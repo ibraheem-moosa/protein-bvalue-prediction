@@ -115,19 +115,19 @@ if __name__ == '__main__':
             if target_available:
                 b = float(line[1])
                 bfactors.append(b)
-        X = mx.nd.array(protein_to_features(seq, window_size, local_freq_ws))
+        X = protein_to_features(seq, window_size, local_freq_ws)
         if target_available:
             #bfactors = np.log(np.array(bfactors))
             #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
-            bfactors = np.array(bfactors)
+            bfactors = np.array(bfactors, dtype=np.float32)
 
         out_fname_suffix = protein.upper() + '_' + str(window_size) + '_' + str(local_freq_ws)
         # write X
-        #scsp.save_npz(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), X)
+        scsp.save_npz(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), X)
         #np.savez_compressed(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), X=X)
-        mx.nd.save(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), [X])
+        #mx.nd.save(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), [X])
         # write y
         if target_available:
-            #np.savez_compressed(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), y=bfactors)
-            y = mx.nd.array(bfactors)
-            mx.nd.save(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), [y])
+            np.savez_compressed(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), y=bfactors)
+            #y = mx.nd.array(bfactors)
+            #mx.nd.save(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), [y])
