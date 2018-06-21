@@ -111,7 +111,8 @@ for epoch in range(200):
         #print(loss.mean().asscalar())
     print(epoch,':',epoch_loss)
     print(time.strftime('%Y-%m-%d %H:%M'))
-
+    if epoch % 10 == 0:
+        print(net.dense.weight.data())
 save_net = input('Do you want to save the net?')
 if 'y' in save_net:
     fname = input('File Name;')

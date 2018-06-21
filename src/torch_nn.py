@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn.functional import relu
+from torch.nn.functional import leaky_relu
 from torch.nn.functional import dropout
 
 class FeedForward(nn.Module):
@@ -17,13 +18,13 @@ class FeedForward(nn.Module):
         self._init_weights_()
 
     def forward(self, x):
-        x = dropout(relu(self.fc1(x)),p=0.2,inplace=True)
-        x = dropout(relu(self.fc2(x)),inplace=True)
-        x = dropout(relu(self.fc3(x)),inplace=True)
-        x = dropout(relu(self.fc4(x)),inplace=True)
-        x = dropout(relu(self.fc5(x)),inplace=True)
-        x = dropout(relu(self.fc6(x)),inplace=True)
-        x = dropout(relu(self.fc7(x)),inplace=True)
+        x = dropout(leaky_relu(self.fc1(x)),p=0.2,inplace=True)
+        x = dropout(leaky_relu(self.fc2(x)),inplace=True)
+        x = dropout(leaky_relu(self.fc3(x)),inplace=True)
+        x = dropout(leaky_relu(self.fc4(x)),inplace=True)
+        x = dropout(leaky_relu(self.fc5(x)),inplace=True)
+        x = dropout(leaky_relu(self.fc6(x)),inplace=True)
+        x = dropout(leaky_relu(self.fc7(x)),inplace=True)
         x = self.fc8(x)
         return x
     
@@ -72,7 +73,6 @@ class ProteinDataset(torch.utils.data.Dataset):
         scsp.save_npz(os.path.join(cache_dir, 'X_cache-' + str(matrices_saved)), scsp.vstack(loaded_Xes))
         np.savez(os.path.join(cache_dir, 'y_cache-' + str(matrices_saved)), y=np.hstack(loaded_ys))
         self._protein_lengths.append(total_protein_length)
-        print(self._num_of_features)
         self._last_loaded_matrix = -1
 
     def __getitem__(self, idx):
@@ -88,21 +88,25 @@ class ProteinDataset(torch.utils.data.Dataset):
         return self._protein_lengths[-1]
 
 
+print(torch.get_num_threads())
+torch.set_num_threads(4)
 import sys
 import numpy as np
 
 if len(sys.argv) < 3:
-    print('Usage: python3 regression.py data_dir X_files y_files cache_dir limit [seed]')
+    print('Usage: python3 regression.py data_dir X_files y_files cache_dir limit checkpoint_dir [warm_start_model] [warm_start_epoch]')
     print('Example: python3 regression.py X_9_18.npz y_9_18.npz 10')
     exit()
 
 import time
 print(time.strftime('%Y-%m-%d %H:%M'))
 
-if len(sys.argv) == 7:
-    seed = int(sys.argv[6])
+if len(sys.argv) == 9:
+    warm_start_model_params = torch.load(sys.argv[7])
+    warm_start_last_epoch = int(sys.argv[8])
 else:
-    seed = None
+    warm_start_model_params = None
+    warm_start_last_epoch = -1
 
 import os
 X_files_list = open(sys.argv[2])
@@ -114,6 +118,14 @@ y_files = []
 for line in y_files_list:
     y_files.append(os.path.join(sys.argv[1], line[:-1]))
 
+import random
+indices = list(range(len(X_files)))
+random.shuffle(indices)
+X_files = [X_files[i] for i in indices]
+y_files = [y_files[i] for i in indices]
+#X_files.reverse()
+#y_files.reverse()
+
 dataset = ProteinDataset(X_files, y_files, sys.argv[4], int(sys.argv[5]))
 print('Dataset init done ', len(dataset))
 print(time.strftime('%Y-%m-%d %H:%M'))
@@ -123,16 +135,18 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
         sampler=torch.utils.data.sampler.SequentialSampler(dataset))
 
 net = FeedForward(dataset._num_of_features)
+if warm_start_model_params != None:
+    net.load_state_dict(warm_start_model_params)
 
 from math import sqrt
 import torch.optim as optim
-init_lr = 0.0001
+init_lr = 0.001
 criterion = nn.MSELoss()
-optimizer = optim.Adam(net.parameters(), 
+optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : init_lr}],
                         lr=init_lr)
-scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99, last_epoch=warm_start_last_epoch)
 
-for epoch in range(500):
+for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 300):
     scheduler.step()
     running_loss = 0.0
     for i, data in enumerate(dataloader):
@@ -150,7 +164,14 @@ for epoch in range(500):
     print(time.strftime('%Y-%m-%d %H:%M'))
 #    for g in optimizer.param_groups:
 #        g['lr'] = init_lr / sqrt(epoch + 1)
-
+    if (epoch + 1) % 20 == 0:
+        torch.save(net.state_dict(), os.path.join(sys.argv[6], 'net-{0:02d}'.format(epoch)))
+    random.shuffle(indices)
+    X_files = [X_files[i] for i in indices]
+    y_files = [y_files[i] for i in indices]
+    dataset = ProteinDataset(X_files, y_files, sys.argv[4], int(sys.argv[5]))
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, 
+                            sampler=torch.utils.data.sampler.SequentialSampler(dataset))
 
 save_net = input('Do you want to save the net?')
 if 'y' in save_net:

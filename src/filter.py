@@ -9,13 +9,18 @@ if len(sys.argv) < 2:
 
 p = MMCIFParser()
 
+count = 0
 for f in os.listdir(sys.argv[1]):
+    if count % 100 == 0:
+        print('Count:',count)
+    count += 1
     print('Processing: ' + f)
     s = p.get_structure('X', os.path.join(sys.argv[1], f))
     for m in s:
         num_of_chains = len([c for c in m])
-        if num_of_chains > 1:
-            print('Num of chains {}'.format(num_of_chains))
+        if num_of_chains == 1:
+            print('Skipping')
+            continue
         chain_num = 0
         for c in m:
             o = open(os.path.join(sys.argv[2], f[:-4] + '-' + str(chain_num)), 'w')
