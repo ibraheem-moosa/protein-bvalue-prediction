@@ -14,6 +14,9 @@ class FixedWidthFeedForwardNeuralNetwork(nn.Module):
         self.linear_layers = [nn.Linear(width, width) for i in range(num_layers-1)]
         self.linear_layers.append(nn.Linear(width, num_outputs))
         self.activation = activation
+        for i in range(num_layers):
+            self.register_parameter('FF' + str(i) + '_weight_', self.linear_layers[i].weight)
+            self.register_parameter('FF' + str(i) + '_bias_', self.linear_layers[i].bias)
         
     def forward(self, x):
         out = self.activation(self.linear_layers[0](x))
@@ -166,13 +169,13 @@ if __name__ == '__main__':
 
     init_lr = 0.005
     momentum = 0.9
-    weight_decay = 0.001
-    hidden_size = 8
+    weight_decay = 1e-7     # 1e-6 is disaster
+    hidden_size = 64
     hidden_scale = 1.0
-    num_hidden_layers = 4
+    num_hidden_layers = 1
     output_layer_depth = 4
-    ff_scale = 0.1
-    grad_clip = 1.0
+    ff_scale = 1.0
+    grad_clip = 1000.0
     nesterov = True
 
     print('Initial LR: {}'.format(init_lr))
@@ -184,12 +187,12 @@ if __name__ == '__main__':
     print('Hidden Layer Size: {}'.format(hidden_size))
     print('Output Layer Depth: {}'.format(output_layer_depth))
     print('Number of Hidden Layers: {}'.format(num_hidden_layers))
-    print('Three hidden layer at output')
     #print('Nesterov: {}'.format(nesterov))
-    print('Adam, Amsgrad')
+    print('Adam')
     #print('Adadelta')
 
-    net = RecurrentNeuralNetwork(21, hidden_size, hidden_scale, num_hidden_layers, ff_scale, output_layer_depth)
+    net = RecurrentNeuralNetwork(21, hidden_size=hidden_size, hidden_scale=hidden_scale, 
+            num_hidden_layers=num_hidden_layers, ff_scale=ff_scale, output_layer_depth=output_layer_depth)
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
@@ -200,7 +203,7 @@ if __name__ == '__main__':
     #                        lr=init_lr, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov)
     #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
     optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
-                            lr=init_lr, weight_decay=weight_decay, amsgrad=True)
+                            lr=init_lr, weight_decay=weight_decay, amsgrad=False)
     #optimizer = optim.Adadelta([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
     #                        lr=init_lr, weight_decay=weight_decay)
 
