@@ -7,6 +7,7 @@ import numpy as np
 import torch.utils.data
 import scipy.sparse as scsp
 from bisect import bisect
+import matplotlib.pyplot as plt
 
 class FixedWidthFeedForwardNeuralNetwork(nn.Module):
     def __init__(self, width, num_outputs, num_layers, activation):
@@ -170,12 +171,12 @@ if __name__ == '__main__':
     init_lr = 0.005
     momentum = 0.9
     weight_decay = 1e-7     # 1e-6 is disaster
-    hidden_size = 64
-    hidden_scale = 1.0
+    hidden_size = 8
+    hidden_scale = 0.5
     num_hidden_layers = 1
     output_layer_depth = 4
-    ff_scale = 1.0
-    grad_clip = 1000.0
+    ff_scale = 1.5
+    grad_clip = 1.0
     nesterov = True
 
     print('Initial LR: {}'.format(init_lr))
@@ -257,14 +258,21 @@ if __name__ == '__main__':
         for i in range(len(validation_dataset)):
             x, y = validation_dataset[i]
             y_pred = net.predict(x)
-            validation_pcc.append(pearsonr(y_pred.numpy().flatten(), y.numpy().flatten())[0])
+            for j in range(x.shape[0]):
+                validation_pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
+                if random.random() > 0.999:
+                    plt.plot(y_pred.numpy()[j].flatten(), 'b-')
+                    plt.plot(y.numpy()[j].flatten(), 'r-')
+                    plt.show()
         validation_pcc = np.array(validation_pcc)
         validation_pcc[np.isnan(validation_pcc)] = 0
+        print('Validation PCC Done')
         train_pcc = []
         for i in range(len(dataset)):
             x, y = dataset[i]
             y_pred = net.predict(x)
-            train_pcc.append(pearsonr(y_pred.numpy().flatten(), y.numpy().flatten())[0])
+            for j in range(x.shape[0]):
+                train_pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
         train_pcc = np.array(train_pcc)
         train_pcc[np.isnan(train_pcc)] = 0
 
