@@ -32,12 +32,16 @@ class RecurrentNeuralNetwork(nn.Module):
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.rnn_layer = nn.RNN(input_size=input_size, hidden_size=hidden_size, 
-                nonlinearity='relu', num_layers=num_hidden_layers, batch_first=True, bidirectional=False)
-        self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size, 1, output_layer_depth, leaky_relu)
+                nonlinearity='relu', num_layers=num_hidden_layers, batch_first=True, bidirectional=True)
+        self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * (2 if self.rnn_layer.bidirectional else 1), 
+                                                                    1, 
+                                                                    output_layer_depth, leaky_relu)
         self._init_weights_()
 
     def forward(self, x):
-        out, h = self.rnn_layer(x, torch.zeros(self.num_hidden_layers, x.shape[0], self.hidden_size))
+        out, h = self.rnn_layer(x, torch.zeros(self.num_hidden_layers * (2 if self.rnn_layer.bidirectional else 1), 
+                                                                                    x.shape[0], 
+                                                                                    self.hidden_size))
         out = self.output_layer(out)
         return out
     
@@ -108,6 +112,9 @@ class ProteinDataset(torch.utils.data.Dataset):
 def summarize_tensor(tensor):
     return torch.max(tensor).item(), torch.min(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item()
 
+def close_event():
+    plt.close()
+
 if __name__ == '__main__':
 
     torch.set_printoptions(precision=2, linewidth=140)
@@ -168,15 +175,15 @@ if __name__ == '__main__':
     #dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=4, shuffle=True)
     #validation_dataloader = torch.utils.data.DataLoader(validation_dataset, batch_size=batch_size, num_workers=4)
 
-    init_lr = 0.005
+    init_lr = 0.008
     momentum = 0.9
-    weight_decay = 1e-7     # 1e-6 is disaster
+    weight_decay = 1e-7
     hidden_size = 8
-    hidden_scale = 0.5
+    hidden_scale = 0.1
     num_hidden_layers = 1
     output_layer_depth = 4
-    ff_scale = 1.5
-    grad_clip = 1.0
+    ff_scale = 0.6
+    grad_clip = 10.0
     nesterov = True
 
     print('Initial LR: {}'.format(init_lr))
@@ -202,19 +209,19 @@ if __name__ == '__main__':
     criterion = nn.MSELoss()
     #optimizer = optim.SGD([{'params' : net.parameters(), 'initial_lr' : init_lr}],
     #                        lr=init_lr, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov)
-    #scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
     optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
                             lr=init_lr, weight_decay=weight_decay, amsgrad=False)
     #optimizer = optim.Adadelta([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
     #                        lr=init_lr, weight_decay=weight_decay)
 
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
 
     from sklearn.metrics import r2_score
     from scipy.stats import pearsonr
 
     indices = list(range(len(dataset)))
     for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 500):
-        #scheduler.step()
+        scheduler.step()
         running_loss = 0.0
         random.shuffle(indices)
         for i in indices:
@@ -260,9 +267,14 @@ if __name__ == '__main__':
             y_pred = net.predict(x)
             for j in range(x.shape[0]):
                 validation_pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
-                if random.random() > 0.999:
-                    plt.plot(y_pred.numpy()[j].flatten(), 'b-')
-                    plt.plot(y.numpy()[j].flatten(), 'r-')
+                if random.random() > 0.998:
+                    fig = plt.figure()
+                    timer = fig.canvas.new_timer(interval=10000)
+                    timer.add_callback(close_event)
+                    plt.title('Bidirectional, 256 Hidden States, 8 Output Layers')
+                    plt.plot(y_pred.numpy()[j].flatten(), 'y-')
+                    plt.plot(y.numpy()[j].flatten(), 'g-')
+                    timer.start()
                     plt.show()
         validation_pcc = np.array(validation_pcc)
         validation_pcc[np.isnan(validation_pcc)] = 0
