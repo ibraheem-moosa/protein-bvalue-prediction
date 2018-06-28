@@ -14,12 +14,14 @@ def aa_to_index(aa):
     else:
         return 20
 
-def get_window_at_pos(seq, pos, window_size):
+def get_window_at_pos(seq, pos, window_size, padding=True):
     left_padding = max((window_size - pos), 0)
     right_padding = max(window_size - (len(seq) - pos - 1), 0)
+    if not padding:
+        return seq[pos-window_size+left_padding:pos] + seq[pos:pos+window_size+1-right_padding]
     return [20] * left_padding + seq[pos-window_size+left_padding:pos] + seq[pos:pos+window_size+1-right_padding] + [20] * right_padding
 
-def seq_to_windows(seq, window_size):
+def seq_to_windows(seq, window_size, padding=True):
     """
     Split the protein sequence into a bunch of windows.
     :param seq: Protein sequence where each amino acid is represeented by integer index.
@@ -28,7 +30,7 @@ def seq_to_windows(seq, window_size):
     :returns: A list of 2 * window_size + 1 sized lists. Part of window that are outside of
                 protein sequence are represented by 20.
     """
-    return [get_window_at_pos(seq, i, window_size) for i in range(len(seq))]
+    return [get_window_at_pos(seq, i, window_size, padding) for i in range(len(seq))]
 
 def seq_to_freq(seq):
     freq = [0.0] * 21
@@ -45,16 +47,18 @@ def seq_to_local_freq(seq, window_size):
     return local_freqs
 
 
-def protein_to_features(seq, ws, local_freq_ws):
+def protein_to_features(seq, ws, local_freq_ws, padding=True):
     num_of_columns = 1 + 21 + 21 + (2 * ws + 1) * 21
     non_zero_elem_per_row = 1 + 21 + 21 + (2 * ws + 1)
     data = []
     indices = []
     indptr = [0]
-    windows = seq_to_windows(seq, ws)
+    windows = seq_to_windows(seq, ws, padding)
     local_freqs = seq_to_local_freq(seq, local_freq_ws)
     global_freq = seq_to_freq(seq)
-    for i in range(len(seq)):
+    starting_pos = 0 if padding else ws
+    ending_pos = len(seq) if padding else len(seq) - ws
+    for i in range(starting_pos, ending_pos):
         # relative position
         pos = i / len(seq)
         data.append(pos)
@@ -72,7 +76,7 @@ def protein_to_features(seq, ws, local_freq_ws):
             data.append(1)
             indices.append(1 + 21 + 21 + j * 21 + windows[i][j])
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
-    return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
+    return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(range(starting_pos, ending_pos)), num_of_columns))
 
 if __name__ == '__main__':
 
@@ -89,7 +93,7 @@ if __name__ == '__main__':
 
     import os
 
-    protein_list = open(sys.argv[3]).read().split(',')
+    protein_list = open(sys.argv[3]).read().split()
     print('Total proteins:', len(protein_list))
 
     window_size = int(sys.argv[4])
@@ -100,7 +104,7 @@ if __name__ == '__main__':
     currently_processing = 0
     for protein in protein_list:
         protein = protein.strip()
-        print(protein)
+    #    print(protein)
         if currently_processing % 100 == 0:
             print('Currently processing: {}'.format(currently_processing))
         currently_processing += 1
@@ -114,8 +118,12 @@ if __name__ == '__main__':
             seq.append(aa_to_index(a))
             if target_available:
                 b = float(line[1])
+                if(b < 0):
+                    print(protein)
                 bfactors.append(b)
         X = protein_to_features(seq, window_size, local_freq_ws)
+        #bfactors = bfactors[window_size:-window_size]
+        assert(X.shape[0] == len(bfactors))
         if target_available:
             #bfactors = np.log(np.array(bfactors))
             #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
