@@ -125,10 +125,9 @@ if __name__ == '__main__':
         #bfactors = bfactors[window_size:-window_size]
         assert(X.shape[0] == len(bfactors))
         if target_available:
-            #bfactors = np.log(np.array(bfactors))
-            #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
             bfactors = np.array(bfactors, dtype=np.float32)
-
+            #bfactors = np.log(np.array(bfactors))
+            bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
         out_fname_suffix = protein.upper() + '_' + str(window_size) + '_' + str(local_freq_ws)
         # write X
         scsp.save_npz(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), X)
@@ -136,6 +135,6 @@ if __name__ == '__main__':
         #mx.nd.save(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), [X])
         # write y
         if target_available:
-            np.savez_compressed(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), y=bfactors)
+            np.savez(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), y=bfactors)
             #y = mx.nd.array(bfactors)
             #mx.nd.save(os.path.join(sys.argv[2], 'y_' + out_fname_suffix), [y])
