@@ -164,11 +164,18 @@ if __name__ == '__main__':
     assert(len(X_files) == len(y_files))
 
     import random
+    random.seed(42)
     indices = list(range(len(X_files)))
     random.shuffle(indices)
-    X_files = [X_files[i] for i in indices[:len(indices)]]
-    y_files = [y_files[i] for i in indices[:len(indices)]]
+    X_files = [X_files[i] for i in indices]
+    y_files = [y_files[i] for i in indices]
+    X_validation_files = X_files[-len(indices) // 5:]
+    y_validation_files = y_files[-len(indices) // 5:]
+    X_files = X_files[:-len(indices) // 5]
+    y_files = y_files[:-len(indices) // 5]
+    indices = list(range(len(X_files)))
     dataset = ProteinDataset(X_files, y_files, sys.argv[4], limit=int(sys.argv[5]), cache_prefix='ensemble-', validation=True)
+    validation_dataset = ProteinDataset(X_validation_files, y_validation_files, sys.argv[4], limit=int(sys.argv[5]), cache_prefix='ensemble_validation-', validation=True)
     print('Dataset init done ', len(dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
 
@@ -216,9 +223,13 @@ if __name__ == '__main__':
     models_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, nets_predictions[i]))) for i in indices]
     models_mean_pccs = [sum(pccs) / len(pccs) for pccs in models_pccs]
 
+    ensemble_weight = model_weights_nn[indices[0]] * nets[indices[0]].fc1.weight.data
+    ensemble_bias = model_weights_nn[indices[0]] * nets[indices[0]].fc1.bias.data
     ensemble_predictions = [[model_weights_nn[indices[0]] * nets_predictions[indices[0]][j] for j in range(len(nets_predictions[indices[0]]))]]
     for i in indices[1:]:
         ensemble_predictions.append([ensemble_predictions[-1][j] + nets_predictions[i][j] * model_weights_nn[i] for j in range(len(nets_predictions[i]))])
+        ensemble_weight += model_weights_nn[i] * nets[i].fc1.weight.data
+        ensemble_bias += model_weights_nn[i] * nets[i].fc1.bias.data
     ensemble_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, ensemble_predictions[i]))) for i in range(len(ensemble_predictions))]
     ensemble_mean_pccs = [sum(pccs) / len(pccs) for pccs in ensemble_pccs]
 
@@ -226,4 +237,24 @@ if __name__ == '__main__':
     plt.plot(ensemble_mean_pccs, 'b-')
     plt.plot(models_mean_pccs, 'g-')
     plt.show()
-    print('Best ensemble pcc: {}'.format(max(ensemble_mean_pccs)))
+
+    ensemble = FeedForward(dataset._num_of_features)
+    ensemble.fc1.weight.data = ensemble_weight
+    ensemble.fc1.bias.data = ensemble_bias
+    torch.save(ensemble.state_dict(), os.path.join(sys.argv[6], 'net-ensemble'))
+
+    validation_true_ys = []
+    ensemble_predictions = []
+    for i in range(len(validation_dataset)):
+        if i % 1000 == 0:
+            print(i)
+        X, y = validation_dataset[i]
+        validation_true_ys.append(y)
+        with torch.no_grad():
+            y_pred = ensemble.forward(torch.from_numpy(X.toarray())).numpy().flatten()
+            ensemble_predictions.append(y_pred)
+    ensemble_validation_pccs = list(map(lambda t: pearsonr(t[0], t[1])[0], zip(validation_true_ys, ensemble_predictions)))
+    from sklearn.metrics import r2_score
+    ensemble_validation_r2 = list(map(lambda t: r2_score(t[0], t[1]), zip(validation_true_ys, ensemble_predictions)))
+    print('Validation ensemble pcc: {}'.format(sum(ensemble_validation_pccs) / len(ensemble_validation_pccs)))
+    print('Validation ensemble r2: {}'.format(sum(ensemble_validation_r2) / len(ensemble_validation_r2)))
