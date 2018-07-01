@@ -48,8 +48,8 @@ def seq_to_local_freq(seq, window_size):
 
 
 def protein_to_features(seq, ws, local_freq_ws, padding=True):
-    num_of_columns = 1 + 21 + 21 + (2 * ws + 1) * 21
-    non_zero_elem_per_row = 1 + 21 + 21 + (2 * ws + 1)
+    num_of_columns = (2 * ws + 1) * 21 #+ 21 + 21 + 1
+    non_zero_elem_per_row = (2 * ws + 1) #+ 21 +21 + 1
     data = []
     indices = []
     indptr = [0]
@@ -59,6 +59,7 @@ def protein_to_features(seq, ws, local_freq_ws, padding=True):
     starting_pos = 0 if padding else ws
     ending_pos = len(seq) if padding else len(seq) - ws
     for i in range(starting_pos, ending_pos):
+        '''
         # relative position
         pos = i / len(seq)
         data.append(pos)
@@ -70,11 +71,12 @@ def protein_to_features(seq, ws, local_freq_ws, padding=True):
         # local amino acid frequency
         for j in range(21):
             data.append(local_freqs[i][j])
-            indices.append(1 + 21 + j)
+            indices.append(j)
+        '''
         # amino acids in window in one hot representation
         for j in range(len(windows[i])):
             data.append(1)
-            indices.append(1 + 21 + 21 + j * 21 + windows[i][j])
+            indices.append(j * 21 + windows[i][j])
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
     return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(range(starting_pos, ending_pos)), num_of_columns))
 

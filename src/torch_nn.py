@@ -12,6 +12,7 @@ import pickle
 class FeedForward(nn.Module):
     def __init__(self, input_size):
         super(FeedForward, self).__init__()
+        '''
         self.fc1 = nn.Linear(input_size, 768)
         self.fc2 = nn.Linear(768, 128)
         self.fc3 = nn.Linear(128, 64)
@@ -20,9 +21,12 @@ class FeedForward(nn.Module):
         self.fc6 = nn.Linear(16, 16)
         self.fc7 = nn.Linear(16, 8)
         self.fc8 = nn.Linear(8, 1)
+        '''
+        self.fc1 = nn.Linear(input_size, 1)
         self._init_weights_()
 
     def forward(self, x):
+        '''
         x = relu(self.fc1(x))
         x = relu(self.fc2(x))
         x = relu(self.fc3(x))
@@ -31,32 +35,34 @@ class FeedForward(nn.Module):
         x = relu(self.fc6(x))
         x = relu(self.fc7(x))
         x = self.fc8(x)
+        '''
+        x = self.fc1(x)
         return x
     
     def _init_weights_(self):
+        '''
         gain = nn.init.calculate_gain('relu')
-        gain = 10
-        bias_std = 1
-        weight_std = 10
-        init_method = nn.init.normal_
-        bias_init_method = nn.init.normal_
-        init_method(self.fc1.weight.data, std=weight_std)
-        init_method(self.fc2.weight.data, std=weight_std)
-        init_method(self.fc3.weight.data, std=weight_std)
-        init_method(self.fc4.weight.data, std=weight_std)
-        init_method(self.fc5.weight.data, std=weight_std)
-        init_method(self.fc6.weight.data, std=weight_std)
-        init_method(self.fc7.weight.data, std=weight_std)
-        init_method(self.fc8.weight.data, std=weight_std)
-        bias_init_method(self.fc1.bias.data, std=bias_std)
-        bias_init_method(self.fc2.bias.data, std=bias_std)
-        bias_init_method(self.fc3.bias.data, std=bias_std)
-        bias_init_method(self.fc4.bias.data, std=bias_std)
-        bias_init_method(self.fc5.bias.data, std=bias_std)
-        bias_init_method(self.fc6.bias.data, std=bias_std)
-        bias_init_method(self.fc7.bias.data, std=bias_std)
-        bias_init_method(self.fc8.bias.data, std=bias_std)
-
+        #gain = 10
+        init_method = nn.init.xavier_normal_
+        bias_init_method = nn.init.constant_
+        init_method(self.fc1.weight.data, gain=gain)
+        init_method(self.fc2.weight.data, gain=gain)
+        init_method(self.fc3.weight.data, gain=gain)
+        init_method(self.fc4.weight.data, gain=gain)
+        init_method(self.fc5.weight.data, gain=gain)
+        init_method(self.fc6.weight.data, gain=gain)
+        init_method(self.fc7.weight.data, gain=gain)
+        init_method(self.fc8.weight.data, gain=gain)
+        bias_init_method(self.fc1.bias.data, 0)
+        bias_init_method(self.fc2.bias.data, 0)
+        bias_init_method(self.fc3.bias.data, 0)
+        bias_init_method(self.fc4.bias.data, 0)
+        bias_init_method(self.fc5.bias.data, 0)
+        bias_init_method(self.fc6.bias.data, 0)
+        bias_init_method(self.fc7.bias.data, 0)
+        bias_init_method(self.fc8.bias.data, 0)
+        '''
+        nn.init.normal_(self.fc1.weight)
 
     def predict(self, dataset):
         with torch.no_grad():
@@ -88,7 +94,7 @@ class ProteinDataset(torch.utils.data.Dataset):
         for xf,yf in zip(X_files, y_files):
             X = scsp.load_npz(xf)
             y = np.load(yf)['y']
-            assert(xf[32:] == yf[32:])
+            assert(xf.split('/')[-1][1:] == yf.split('/')[-1][1:])
             assert(X.shape[0] == len(y))
             if validation:
                 total_cache_element_count += 1
@@ -194,6 +200,7 @@ if __name__ == '__main__':
     '''
 
     import random
+    random.seed(42)
     indices = list(range(len(X_files)))
     random.shuffle(indices)
 
@@ -218,25 +225,26 @@ if __name__ == '__main__':
         warm_start_model_params = None
         warm_start_last_epoch = -1
 
-    batch_size = 32
+    batch_size = 256
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, 
             sampler=torch.utils.data.sampler.SequentialSampler(dataset))
 
+    print(dataset._num_of_features)
     net = FeedForward(dataset._num_of_features)
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
     from math import sqrt
     import torch.optim as optim
-    init_lr = 0.5
+    init_lr = 0.01
     criterion = nn.MSELoss()
     optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : init_lr}],
                             lr=init_lr, weight_decay=0.1)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 1.00, last_epoch=warm_start_last_epoch)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.98, last_epoch=warm_start_last_epoch)
     
     from sklearn.metrics import r2_score
     from scipy.stats import pearsonr
-    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 500):
+    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 100):
         print('###############################################')
         scheduler.step()
         running_loss = 0.0
@@ -255,6 +263,7 @@ if __name__ == '__main__':
         print('Epoch: {} done. Loss: {}'.format(
                                 epoch, running_loss / update_count))
         print(time.strftime('%Y-%m-%d %H:%M'))
+        '''
         net.eval()
         validation_pred, validation_true = net.predict(validation_dataset)
         validation_pcc = list(map(lambda t: pearsonr(t[0], t[1])[0], zip(validation_pred, validation_true)))
@@ -268,9 +277,7 @@ if __name__ == '__main__':
         train_r2 = list(map(lambda t: r2_score(t[1], t[0]), zip(train_pred, train_true)))
         train_r2 = sum(train_r2) / len(train_r2)
         net.train()
-        '''
-        R2 = 1 - (mean squared error) / (Variance of truth)
-        '''
+        #R2 = 1 - (mean squared error) / (Variance of truth)
         print('-----------------------------------------------')
         print('Validation Prediction min, max, mean, std: {}'.format(summarize_ndarrays(validation_pred)))
         print('Validation True min, max, mean, std: {}'.format(summarize_ndarrays(validation_true)))
@@ -287,6 +294,7 @@ if __name__ == '__main__':
             print(summarize_tensor(param))
         print('###############################################')
         print(time.strftime('%Y-%m-%d %H:%M'))
+        '''
     #    for g in optimizer.param_groups:
     #        g['lr'] = init_lr / sqrt(epoch + 1)
         #if (epoch + 1) % 5 == 0:
@@ -297,9 +305,9 @@ if __name__ == '__main__':
         dataset = ProteinDataset(X_files, y_files, sys.argv[7], int(sys.argv[8]))
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, 
                      sampler=torch.utils.data.sampler.SequentialSampler(dataset))
-
+    '''
     save_net = input('Do you want to save the net?')
     if 'y' in save_net:
         fname = input('File Name;')
         torch.save(net.state_dict(), fname)
-
+    '''

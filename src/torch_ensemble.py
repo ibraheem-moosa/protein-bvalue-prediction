@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn.functional import relu
+from torch.nn.functional import tanh
 from torch.nn.functional import leaky_relu
 from torch.nn.functional import dropout
 import numpy as np
@@ -12,6 +13,7 @@ import pickle
 class FeedForward(nn.Module):
     def __init__(self, input_size):
         super(FeedForward, self).__init__()
+        '''
         self.fc1 = nn.Linear(input_size, 768)
         self.fc2 = nn.Linear(768, 128)
         self.fc3 = nn.Linear(128, 64)
@@ -20,8 +22,11 @@ class FeedForward(nn.Module):
         self.fc6 = nn.Linear(16, 16)
         self.fc7 = nn.Linear(16, 8)
         self.fc8 = nn.Linear(8, 1)
+        '''
+        self.fc1 = nn.Linear(input_size, 1)
 
     def forward(self, x):
+        '''
         x = dropout(leaky_relu(self.fc1(x)), p=0.2)
         x = dropout(leaky_relu(self.fc2(x)))
         x = dropout(leaky_relu(self.fc3(x)))
@@ -30,6 +35,8 @@ class FeedForward(nn.Module):
         x = dropout(leaky_relu(self.fc6(x)))
         x = dropout(leaky_relu(self.fc7(x)))
         x = self.fc8(x)
+        '''
+        x = self.fc1(x)
         return x
     
     def predict(self, dataset):
@@ -62,7 +69,7 @@ class ProteinDataset(torch.utils.data.Dataset):
         for xf,yf in zip(X_files, y_files):
             X = scsp.load_npz(xf)
             y = np.load(yf)['y']
-            assert(xf[32:] == yf[32:])
+            assert(xf.split('/')[-1][1:] == yf.split('/')[-1][1:])
             assert(X.shape[0] == len(y))
             if validation:
                 total_cache_element_count += 1
@@ -178,7 +185,7 @@ if __name__ == '__main__':
     nets_predictions = [[] for i in range(len(nets))]
     true_ys = []
     for i in range(len(dataset)):
-        if i % 10 == 0:
+        if i % 1000 == 0:
             print(i)
         X, y = dataset[i]
         true_ys.append(y)
@@ -189,29 +196,34 @@ if __name__ == '__main__':
 
     print(time.strftime('%Y-%m-%d %H:%M'))
     print('Model predictions computed')
-    from scipy.stats import pearsonr
-    nets_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, nets_predictions[i]))) for i in range(len(nets_predictions))]
-    nets_mean_pccs = [sum(pccs) / len(pccs) for pccs in nets_pccs]
+    print('Creating dataset for estimating model weights')
+    X = [np.vstack([nets_predictions[j][i] for j in range(len(nets_predictions))]).transpose() for i in range(len(nets_predictions[0]))]
+    X = np.vstack(X)
+    y = np.hstack(true_ys)
+
+    print('Try scipy nnls')
+    from scipy.optimize import nnls
+    model_weights_nn = nnls(X,y)
+    print(model_weights_nn)
+    model_weights_nn = model_weights_nn[0]
+    print(len(model_weights_nn))
     indices = list(range(len(nets)))
-    indices.sort(key = lambda i: nets_mean_pccs[i], reverse=True)
+    indices.sort(key = lambda i: model_weights_nn[i], reverse=True)
+    non_zero_model_count = len(model_weights_nn) - list(model_weights_nn).count(0.0)
+    indices = indices[:non_zero_model_count]
+    print(indices)
+    from scipy.stats import pearsonr
+    models_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, nets_predictions[i]))) for i in indices]
+    models_mean_pccs = [sum(pccs) / len(pccs) for pccs in models_pccs]
 
-    print(time.strftime('%Y-%m-%d %H:%M'))
-    print('PCCs computed')
-    ensemble_predictions = [nets_predictions[indices[0]]]
+    ensemble_predictions = [[model_weights_nn[indices[0]] * nets_predictions[indices[0]][j] for j in range(len(nets_predictions[indices[0]]))]]
     for i in indices[1:]:
-        ensemble_predictions.append([ensemble_predictions[-1][j] + nets_predictions[i][j] for j in range(len(nets_predictions[i]))])
-
-    for i in range(len(ensemble_predictions)):
-        for j in range(len(ensemble_predictions[i])):
-            ensemble_predictions[i][j] /= (i + 1)
-    
-    print('Ensemble prediction computed')
+        ensemble_predictions.append([ensemble_predictions[-1][j] + nets_predictions[i][j] * model_weights_nn[i] for j in range(len(nets_predictions[i]))])
     ensemble_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, ensemble_predictions[i]))) for i in range(len(ensemble_predictions))]
     ensemble_mean_pccs = [sum(pccs) / len(pccs) for pccs in ensemble_pccs]
- 
-    print('Ensemble PCCs computed')
-    print(time.strftime('%Y-%m-%d %H:%M'))
+
     import matplotlib.pyplot as plt
     plt.plot(ensemble_mean_pccs, 'b-')
-    plt.plot([nets_mean_pccs[i] for i in indices], 'g-')
+    plt.plot(models_mean_pccs, 'g-')
     plt.show()
+    print('Best ensemble pcc: {}'.format(max(ensemble_mean_pccs)))
