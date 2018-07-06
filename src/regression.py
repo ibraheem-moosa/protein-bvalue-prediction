@@ -24,10 +24,13 @@ from sklearn.ensemble import BaggingRegressor
 from sklearn.neural_network import MLPRegressor
 
 clf = MLPRegressor(hidden_layer_sizes=(768,128,64,32,16,16,8), activation='relu', 
-                    alpha=0.1, batch_size=256, early_stopping=False, 
-                    learning_rate_init=0.00075, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
+                    alpha=1, batch_size=256, early_stopping=False, 
+                    learning_rate_init=0.075, solver='adam', learning_rate='adaptive', nesterovs_momentum=True, 
                     max_iter=200, tol=1e-8, verbose=True, validation_fraction=0.1, random_state=seed)
 
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+clf = RandomForestRegressor(n_estimators=2,n_jobs=4,verbose=5,max_depth=13)
 print(clf)
 #clf = BaggingRegressor(clf, n_estimators=5, 
 #                       max_samples=0.8, verbose=5, n_jobs=2)
@@ -36,6 +39,7 @@ from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.8, random_state=42)
 
 clf.fit(X_train, y_train)
+print(clf.feature_importances_)
 # there is sudden spike in memory consumption here
 import gc
 gc.collect()
