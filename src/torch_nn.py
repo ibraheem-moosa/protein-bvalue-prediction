@@ -22,7 +22,8 @@ class FeedForward(nn.Module):
         self.fc7 = nn.Linear(16, 8)
         self.fc8 = nn.Linear(8, 1)
         '''
-        self.fc1 = nn.Linear(input_size, 1)
+        self.fc1 = nn.Linear(input_size, 4)
+        self.fc2 = nn.Linear(4, 1)
         self._init_weights_()
 
     def forward(self, x):
@@ -36,7 +37,8 @@ class FeedForward(nn.Module):
         x = relu(self.fc7(x))
         x = self.fc8(x)
         '''
-        x = self.fc1(x)
+        x = leaky_relu(self.fc1(x))
+        x = self.fc2(x)
         return x
     
     def _init_weights_(self):
@@ -63,6 +65,7 @@ class FeedForward(nn.Module):
         bias_init_method(self.fc8.bias.data, 0)
         '''
         nn.init.normal_(self.fc1.weight)
+        nn.init.normal_(self.fc2.weight)
 
     def predict(self, dataset):
         with torch.no_grad():
@@ -236,15 +239,19 @@ if __name__ == '__main__':
 
     from math import sqrt
     import torch.optim as optim
-    init_lr = 0.01
+    init_lr = 0.0005
     criterion = nn.MSELoss()
     optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : init_lr}],
                             lr=init_lr, weight_decay=0.1)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.98, last_epoch=warm_start_last_epoch)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.9, last_epoch=warm_start_last_epoch)
     
     from sklearn.metrics import r2_score
     from scipy.stats import pearsonr
-    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 100):
+    import math
+    best_validation_pcc = -math.inf
+    best_validation_pcc_found_at = -1
+
+    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 200):
         print('###############################################')
         scheduler.step()
         running_loss = 0.0
@@ -263,7 +270,6 @@ if __name__ == '__main__':
         print('Epoch: {} done. Loss: {}'.format(
                                 epoch, running_loss / update_count))
         print(time.strftime('%Y-%m-%d %H:%M'))
-        '''
         net.eval()
         validation_pred, validation_true = net.predict(validation_dataset)
         validation_pcc = list(map(lambda t: pearsonr(t[0], t[1])[0], zip(validation_pred, validation_true)))
@@ -271,12 +277,16 @@ if __name__ == '__main__':
         validation_r2 = list(map(lambda t: r2_score(t[1], t[0]), zip(validation_pred, validation_true)))
         validation_r2 = sum(validation_r2) / len(validation_r2)
 
+        if validation_pcc > best_validation_pcc:
+            best_validation_pcc = validation_pcc
+            best_validation_pcc_found_at = epoch
+        '''
         train_pred, train_true = net.predict(train_dataset)
         train_pcc = list(map(lambda t: pearsonr(t[0], t[1])[0], zip(train_pred, train_true)))
         train_pcc = sum(train_pcc) / len(train_pcc)
         train_r2 = list(map(lambda t: r2_score(t[1], t[0]), zip(train_pred, train_true)))
         train_r2 = sum(train_r2) / len(train_r2)
-        net.train()
+        '''
         #R2 = 1 - (mean squared error) / (Variance of truth)
         print('-----------------------------------------------')
         print('Validation Prediction min, max, mean, std: {}'.format(summarize_ndarrays(validation_pred)))
@@ -284,21 +294,25 @@ if __name__ == '__main__':
         print('Validation PCC: {}'.format(validation_pcc))
         print('Validation R2: {}'.format(validation_r2))
         print('-----------------------------------------------')
+        '''
         print('Train Prediction min, max, mean, std: {}'.format(summarize_ndarrays(train_pred)))
         print('Train True min, max, mean, std: {}'.format(summarize_ndarrays(train_true)))
         print('Train PCC: {}'.format(train_pcc))
         print('Train R2: {}'.format(train_r2))
         print('-----------------------------------------------')
+        '''
         for name, param in net.named_parameters():
             print(name)
             print(summarize_tensor(param))
         print('###############################################')
         print(time.strftime('%Y-%m-%d %H:%M'))
-        '''
     #    for g in optimizer.param_groups:
     #        g['lr'] = init_lr / sqrt(epoch + 1)
         #if (epoch + 1) % 5 == 0:
         torch.save(net.state_dict(), os.path.join(sys.argv[9], 'net-{0:02d}'.format(epoch)))
+        if epoch - best_validation_pcc_found_at >= 10:
+            break
+        net.train()
         random.shuffle(indices)
         X_files = [X_files[i] for i in indices]
         y_files = [y_files[i] for i in indices]
