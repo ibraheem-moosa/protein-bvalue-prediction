@@ -23,6 +23,10 @@ class FeedForward(nn.Module):
         self.fc7 = nn.Linear(16, 8)
         self.fc8 = nn.Linear(8, 1)
         '''
+        '''
+        self.fc1 = nn.Linear(input_size, 2)
+        self.fc2 = nn.Linear(2, 1)
+        '''
         self.fc1 = nn.Linear(input_size, 1)
 
     def forward(self, x):
@@ -35,6 +39,10 @@ class FeedForward(nn.Module):
         x = dropout(leaky_relu(self.fc6(x)))
         x = dropout(leaky_relu(self.fc7(x)))
         x = self.fc8(x)
+        '''
+        '''
+        x = leaky_relu(self.fc1(x))
+        x = self.fc2(x)
         '''
         x = self.fc1(x)
         return x
@@ -203,45 +211,46 @@ if __name__ == '__main__':
 
     print(time.strftime('%Y-%m-%d %H:%M'))
     print('Model predictions computed')
-    print('Creating dataset for estimating model weights')
-    X = [np.vstack([nets_predictions[j][i] for j in range(len(nets_predictions))]).transpose() for i in range(len(nets_predictions[0]))]
-    X = np.vstack(X)
-    y = np.hstack(true_ys)
-
-    print('Try scipy nnls')
-    from scipy.optimize import nnls
-    model_weights_nn = nnls(X,y)
-    print(model_weights_nn)
-    model_weights_nn = model_weights_nn[0]
-    print(len(model_weights_nn))
-    indices = list(range(len(nets)))
-    indices.sort(key = lambda i: model_weights_nn[i], reverse=True)
-    non_zero_model_count = len(model_weights_nn) - list(model_weights_nn).count(0.0)
-    indices = indices[:non_zero_model_count]
-    print(indices)
     from scipy.stats import pearsonr
-    models_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, nets_predictions[i]))) for i in indices]
+    from sklearn.metrics import r2_score
+    models_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, nets_predictions[i]))) for i in range(len(nets_predictions))]
     models_mean_pccs = [sum(pccs) / len(pccs) for pccs in models_pccs]
+    models_r2s = [list(map(lambda t: r2_score(t[0], t[1]), zip(true_ys, nets_predictions[i]))) for i in range(len(nets_predictions))]
+    models_mean_r2s = [sum(r2s) / len(r2s) for r2s in models_r2s]
 
-    ensemble_weight = model_weights_nn[indices[0]] * nets[indices[0]].fc1.weight.data
-    ensemble_bias = model_weights_nn[indices[0]] * nets[indices[0]].fc1.bias.data
-    ensemble_predictions = [[model_weights_nn[indices[0]] * nets_predictions[indices[0]][j] for j in range(len(nets_predictions[indices[0]]))]]
+    indices = list(range(len(nets_predictions)))
+    indices.sort(key=lambda i: models_mean_r2s[i], reverse=True)
+    print('Model PCCs computed')
+    ensemble_predictions = [nets_predictions[indices[0]]]
     for i in indices[1:]:
-        ensemble_predictions.append([ensemble_predictions[-1][j] + nets_predictions[i][j] * model_weights_nn[i] for j in range(len(nets_predictions[i]))])
-        ensemble_weight += model_weights_nn[i] * nets[i].fc1.weight.data
-        ensemble_bias += model_weights_nn[i] * nets[i].fc1.bias.data
+        ensemble_predictions.append([ensemble_predictions[-1][j] + nets_predictions[i][j] for j in range(len(nets_predictions[i]))])
+    for i in range(1, len(ensemble_predictions)):
+        ensemble_predictions[i] = [ensemble_predictions[i][j] / (i + 1) for j in range(len(ensemble_predictions[i]))]
+    print('Ensemble predictions computed')
     ensemble_pccs = [list(map(lambda t: pearsonr(t[0], t[1])[0], zip(true_ys, ensemble_predictions[i]))) for i in range(len(ensemble_predictions))]
     ensemble_mean_pccs = [sum(pccs) / len(pccs) for pccs in ensemble_pccs]
+    ensemble_r2s = [list(map(lambda t: r2_score(t[0], t[1]), zip(true_ys, ensemble_predictions[i]))) for i in range(len(ensemble_predictions))]
+    ensemble_mean_r2s = [sum(r2s) / len(r2s) for r2s in ensemble_r2s]
 
+
+    print('Ensemble PCCs computed')
+    max_pcc = max(ensemble_mean_pccs)
+    max_r2 = max(ensemble_mean_r2s)
+    max_pcc_index = ensemble_mean_pccs.index(max_pcc) + 1
+    max_r2_index = ensemble_mean_r2s.index(max_r2) + 1
+    models_to_take = max_r2_index
+    print('Best Ensemble untill {}'.format(models_to_take))
+    ensemble_weight = nets[indices[0]].fc1.weight.data
+    ensemble_bias = nets[indices[0]].fc1.bias.data
+    for i in indices[1:models_to_take]:
+        ensemble_weight += nets[i].fc1.weight.data
+        ensemble_bias += nets[i].fc1.bias.data
+    ensemble_weight /= (models_to_take)
+    ensemble_bias /= (models_to_take)
     import matplotlib.pyplot as plt
     plt.plot(ensemble_mean_pccs, 'b-')
-    plt.plot(models_mean_pccs, 'g-')
+    plt.plot([models_mean_pccs[i] for i in indices], 'g-')
     plt.show()
-
-    ensemble = FeedForward(dataset._num_of_features)
-    ensemble.fc1.weight.data = ensemble_weight
-    ensemble.fc1.bias.data = ensemble_bias
-    torch.save(ensemble.state_dict(), os.path.join(sys.argv[6], 'net-ensemble'))
 
     validation_true_ys = []
     ensemble_predictions = []
@@ -250,11 +259,17 @@ if __name__ == '__main__':
             print(i)
         X, y = validation_dataset[i]
         validation_true_ys.append(y)
-        with torch.no_grad():
-            y_pred = ensemble.forward(torch.from_numpy(X.toarray())).numpy().flatten()
-            ensemble_predictions.append(y_pred)
+        this_y_preds = []
+        for j in range(models_to_take):
+            with torch.no_grad():
+                y_pred = nets[indices[j]].forward(torch.from_numpy(X.toarray())).numpy().flatten()
+                this_y_preds.append(y_pred)
+        y_pred = this_y_preds[0]
+        for pred in this_y_preds[1:]:
+            y_pred += pred
+        ensemble_predictions.append(y_pred)
+
     ensemble_validation_pccs = list(map(lambda t: pearsonr(t[0], t[1])[0], zip(validation_true_ys, ensemble_predictions)))
-    from sklearn.metrics import r2_score
     ensemble_validation_r2 = list(map(lambda t: r2_score(t[0], t[1]), zip(validation_true_ys, ensemble_predictions)))
     print('Validation ensemble pcc: {}'.format(sum(ensemble_validation_pccs) / len(ensemble_validation_pccs)))
     print('Validation ensemble r2: {}'.format(sum(ensemble_validation_r2) / len(ensemble_validation_r2)))
