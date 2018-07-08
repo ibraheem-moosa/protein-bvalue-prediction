@@ -48,7 +48,7 @@ def seq_to_local_freq(seq, window_size):
 
 
 def protein_to_features(seq, ws, local_freq_ws, padding=True):
-    num_of_columns = (2 * ws + 1) * 21 #+ 21 + 21 + 1
+    num_of_columns = (2 * ws + 1) * 20 #+ 21 + 21 + 1
     non_zero_elem_per_row = (2 * ws + 1) #+ 21 +21 + 1
     data = []
     indices = []
@@ -73,11 +73,14 @@ def protein_to_features(seq, ws, local_freq_ws, padding=True):
             data.append(local_freqs[i][j])
             indices.append(j)
         '''
+        non_zero_elem_in_this_row = 0
         # amino acids in window in one hot representation
         for j in range(len(windows[i])):
-            data.append(1)
-            indices.append(j * 21 + windows[i][j])
-        indptr.append(indptr[-1] +  non_zero_elem_per_row)
+            if windows[i][j] != 20:
+                data.append(1)
+                indices.append(j * 20 + windows[i][j])
+                non_zero_elem_in_this_row += 1
+        indptr.append(indptr[-1] +  non_zero_elem_in_this_row)
     return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(range(starting_pos, ending_pos)), num_of_columns))
 
 if __name__ == '__main__':
@@ -120,7 +123,7 @@ if __name__ == '__main__':
             seq.append(aa_to_index(a))
             if target_available:
                 b = float(line[1])
-                if(b < 0):
+                if(b <= 0):
                     print(protein)
                 bfactors.append(b)
         X = protein_to_features(seq, window_size, local_freq_ws)
@@ -129,7 +132,7 @@ if __name__ == '__main__':
         if target_available:
             bfactors = np.array(bfactors, dtype=np.float32)
             #bfactors = np.log(np.array(bfactors))
-            bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
+            #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
         out_fname_suffix = protein.upper() + '_' + str(window_size) + '_' + str(local_freq_ws)
         # write X
         scsp.save_npz(os.path.join(sys.argv[2], 'X_' + out_fname_suffix), X)
