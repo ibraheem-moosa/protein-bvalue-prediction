@@ -82,7 +82,7 @@ class FeedForward(nn.Module):
 
 class ProteinDataset(torch.utils.data.Dataset):
 
-    def __init__(self, X_files, y_files, cache_dir, limit=4*1024*1024, cache_prefix='cache-', validation=False):
+    def __init__(self, X_files, y_files, cache_dir, limit=128*1024*1024, cache_prefix='cache-', validation=False):
         self.cache_dir = cache_dir
         self._cache_element_counts = []
         self._validation = validation
@@ -174,7 +174,7 @@ if __name__ == '__main__':
     import sys
 
     if len(sys.argv) < 9:
-        print('Usage: python3 regression.py data_dir X_files y_files validation_dir X_validation_files y_validation_files cache_dir limit checkpoint_dir [warm_start_model] [warm_start_epoch]')
+        print('Usage: python3 regression.py data_dir X_files y_files validation_dir X_validation_files y_validation_files cache_dir checkpoint_dir [warm_start_model] [warm_start_epoch]')
         print('Example: python3 regression.py X_9_18.npz y_9_18.npz 10')
         exit()
 
@@ -221,9 +221,9 @@ if __name__ == '__main__':
     print('Validation dataset init done ', len(validation_dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
 
-    if len(sys.argv) == 12:
-        warm_start_model_params = torch.load(sys.argv[10])
-        warm_start_last_epoch = int(sys.argv[11])
+    if len(sys.argv) == 11:
+        warm_start_model_params = torch.load(sys.argv[9])
+        warm_start_last_epoch = int(sys.argv[10])
     else:
         warm_start_model_params = None
         warm_start_last_epoch = -1
@@ -309,7 +309,7 @@ if __name__ == '__main__':
     #    for g in optimizer.param_groups:
     #        g['lr'] = init_lr / sqrt(epoch + 1)
         #if (epoch + 1) % 5 == 0:
-        torch.save(net.state_dict(), os.path.join(sys.argv[9], 'net-{0:02d}'.format(epoch)))
+        torch.save(net.state_dict(), os.path.join(sys.argv[8], 'net-{0:02d}'.format(epoch)))
         if epoch - best_validation_pcc_found_at >= 10:
             break
         net.train()

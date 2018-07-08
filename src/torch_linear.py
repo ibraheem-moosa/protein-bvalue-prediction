@@ -12,30 +12,10 @@ import pickle
 class FeedForward(nn.Module):
     def __init__(self, input_size):
         super(FeedForward, self).__init__()
-        '''
-        self.fc1 = nn.Linear(input_size, 768)
-        self.fc2 = nn.Linear(768, 128)
-        self.fc3 = nn.Linear(128, 64)
-        self.fc4 = nn.Linear(64, 32)
-        self.fc5 = nn.Linear(32, 16)
-        self.fc6 = nn.Linear(16, 16)
-        self.fc7 = nn.Linear(16, 8)
-        self.fc8 = nn.Linear(8, 1)
-        '''
         self.fc1 = nn.Linear(input_size, 1)
         self._init_weights_()
 
     def forward(self, x):
-        '''
-        x = relu(self.fc1(x))
-        x = relu(self.fc2(x))
-        x = relu(self.fc3(x))
-        x = relu(self.fc4(x))
-        x = relu(self.fc5(x))
-        x = relu(self.fc6(x))
-        x = relu(self.fc7(x))
-        x = self.fc8(x)
-        '''
         x = self.fc1(x)
         return x
     
@@ -46,23 +26,9 @@ class FeedForward(nn.Module):
         init_method = nn.init.xavier_normal_
         bias_init_method = nn.init.constant_
         init_method(self.fc1.weight.data, gain=gain)
-        init_method(self.fc2.weight.data, gain=gain)
-        init_method(self.fc3.weight.data, gain=gain)
-        init_method(self.fc4.weight.data, gain=gain)
-        init_method(self.fc5.weight.data, gain=gain)
-        init_method(self.fc6.weight.data, gain=gain)
-        init_method(self.fc7.weight.data, gain=gain)
-        init_method(self.fc8.weight.data, gain=gain)
         bias_init_method(self.fc1.bias.data, 0)
-        bias_init_method(self.fc2.bias.data, 0)
-        bias_init_method(self.fc3.bias.data, 0)
-        bias_init_method(self.fc4.bias.data, 0)
-        bias_init_method(self.fc5.bias.data, 0)
-        bias_init_method(self.fc6.bias.data, 0)
-        bias_init_method(self.fc7.bias.data, 0)
-        bias_init_method(self.fc8.bias.data, 0)
         '''
-        nn.init.normal_(self.fc1.weight)
+        nn.init.normal_(self.fc1.weight, std=2.0)
 
     def predict(self, dataset):
         with torch.no_grad():
@@ -79,7 +45,7 @@ class FeedForward(nn.Module):
 
 class ProteinDataset(torch.utils.data.Dataset):
 
-    def __init__(self, X_files, y_files, cache_dir, limit=4*1024*1024, cache_prefix='cache-', validation=False):
+    def __init__(self, X_files, y_files, cache_dir, limit=128*1024*1024, cache_prefix='cache-', validation=False):
         self.cache_dir = cache_dir
         self._cache_element_counts = []
         self._validation = validation
@@ -171,7 +137,7 @@ if __name__ == '__main__':
     import sys
 
     if len(sys.argv) < 9:
-        print('Usage: python3 regression.py data_dir X_files y_files validation_dir X_validation_files y_validation_files cache_dir limit checkpoint_dir [warm_start_model] [warm_start_epoch]')
+        print('Usage: python3 regression.py data_dir X_files y_files validation_dir X_validation_files y_validation_files cache_dir checkpoint_dir [warm_start_model] [warm_start_epoch]')
         print('Example: python3 regression.py X_9_18.npz y_9_18.npz 10')
         exit()
 
@@ -211,16 +177,16 @@ if __name__ == '__main__':
     X_files = X_files[:-len(indices) // 5]
     y_files = y_files[:-len(indices) // 5]
     indices = list(range(len(X_files)))
-    dataset = ProteinDataset(X_files, y_files, sys.argv[7], int(sys.argv[8]))
-    train_dataset = ProteinDataset(X_files, y_files, sys.argv[7], limit=int(sys.argv[8]), cache_prefix='train-', validation=True)
+    dataset = ProteinDataset(X_files, y_files, sys.argv[7])
+    train_dataset = ProteinDataset(X_files, y_files, sys.argv[7], cache_prefix='train-', validation=True)
     print('Dataset init done ', len(dataset))
-    validation_dataset = ProteinDataset(X_validation_files, y_validation_files, sys.argv[7], limit=int(sys.argv[8]), cache_prefix='validation-', validation=True)
+    validation_dataset = ProteinDataset(X_validation_files, y_validation_files, sys.argv[7], cache_prefix='validation-', validation=True)
     print('Validation dataset init done ', len(validation_dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
 
-    if len(sys.argv) == 12:
-        warm_start_model_params = torch.load(sys.argv[10])
-        warm_start_last_epoch = int(sys.argv[11])
+    if len(sys.argv) == 11:
+        warm_start_model_params = torch.load(sys.argv[9])
+        warm_start_last_epoch = int(sys.argv[10])
     else:
         warm_start_model_params = None
         warm_start_last_epoch = -1
@@ -300,11 +266,11 @@ if __name__ == '__main__':
     #    for g in optimizer.param_groups:
     #        g['lr'] = init_lr / sqrt(epoch + 1)
         #if (epoch + 1) % 5 == 0:
-        torch.save(net.state_dict(), os.path.join(sys.argv[9], 'net-{0:02d}'.format(epoch)))
+        torch.save(net.state_dict(), os.path.join(sys.argv[8], 'net-{0:02d}'.format(epoch)))
         random.shuffle(indices)
         X_files = [X_files[i] for i in indices]
         y_files = [y_files[i] for i in indices]
-        dataset = ProteinDataset(X_files, y_files, sys.argv[7], int(sys.argv[8]))
+        dataset = ProteinDataset(X_files, y_files, sys.argv[7])
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, 
                      sampler=torch.utils.data.sampler.SequentialSampler(dataset))
     '''
