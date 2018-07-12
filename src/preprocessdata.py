@@ -72,19 +72,44 @@ def protein_to_features(seq, ws, local_freq_ws):
             data.append(1)
             indices.append(1 + 21 + 21 + j * 21 + windows[i][j])
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
-    return scsp.csr_matrix((data, indices, indptr), dtype=np.float64, shape = (len(seq), num_of_columns))
+    return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
 
+def ndarray_from_files(files, window_size, local_freq_ws):
+    y = []
+    currently_processing = 0
+    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) * 21
+    non_zero_elem_per_row = 1 + 21 + 21 + (2 * window_size + 1)
+ 
+    X = scsp.csr_matrix((0, num_of_columns))
+    for f in files:
+        if currently_processing % 100 == 0:
+            print('Currently processing: {}'.format(currently_processing))
+        currently_processing += 1
+        seq = []
+        bfactors = []
+        for line in open(os.path.join(sys.argv[1], f)):
+            line = line.split()
+            a = line[0].strip()
+            seq.append(aa_to_index(a))
+            b = float(line[1])
+            bfactors.append(b)
+        X = scsp.vstack([X, protein_to_features(seq, window_size, local_freq_ws)])
+    
+        #bfactors = np.log(np.array(bfactors))
+        #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
+        y.extend(bfactors)
+    y = np.array(y, dtype=np.float32)
+    return X, y
+	
 if __name__ == '__main__':
 
     import sys
 
     if len(sys.argv) < 6:
-        print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X.txt [y.txt]')
+        print('Usage: python3 preprocessdata.py input_directory num_of_proteins window_size local_freq_window_size X y')
         print('Example: python3 preprocessdata.py filtered_data 3484 9 18 X_9_18 y_9_18')
         exit()
 
-    if len(sys.argv) > 5:
-        target_available = True
     import time
     print(time.strftime('%Y-%m-%d %H:%M'))
 
@@ -93,43 +118,23 @@ if __name__ == '__main__':
     num_of_proteins = int(sys.argv[2])
     print('Total files: {}'.format(len(os.listdir(sys.argv[1]))))
     files = os.listdir(sys.argv[1])
+    random.seed(42)
+    random.shuffle(files)
+    num_of_train = int(0.6 * len(files))
+    train_files = files[:num_of_train]
+    test_files = files[num_of_train:]
+
     if num_of_proteins < len(files):
         files = random.sample(files, num_of_proteins)
 
     window_size = int(sys.argv[3])
     local_freq_ws = int(sys.argv[4])
-
-    if target_available:
-        y = []
-    currently_processing = 0
-    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) * 21
-    non_zero_elem_per_row = 1 + 21 + 21 + (2 * window_size + 1)
-
-    X = scsp.csr_matrix((0, num_of_columns))
-    for f in files:
-        print(f)
-        if currently_processing % 100 == 0:
-            print('Currently processing: {}'.format(currently_processing))
-        currently_processing += 1
-        seq = []
-        if target_available:
-            bfactors = []
-        for line in open(os.path.join(sys.argv[1], f)):
-            line = line.split()
-            a = line[0].strip()
-            seq.append(aa_to_index(a))
-            if target_available:
-                b = float(line[1])
-                bfactors.append(b)
-        X = scsp.vstack([X, protein_to_features(seq, window_size, local_freq_ws)])
-        if target_available:
-            #bfactors = np.log(np.array(bfactors))
-            #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
-            y.extend(bfactors)
+    X_train, y_train = ndarray_from_files(train_files, window_size, local_freq_ws)
+    X_test, y_test =  ndarray_from_files(test_files, window_size, local_freq_ws)
 
     # write X
-    scsp.save_npz(sys.argv[5], X)
+    scsp.save_npz(sys.argv[5] + '_train', X_train)
+    scsp.save_npz(sys.argv[5] + '_test', X_test)
     # write y
-    if target_available:
-        y = np.array(y, dtype=np.float64)
-        np.savez_compressed(sys.argv[6], y=y)
+    np.savez_compressed(sys.argv[6] + '_train', y=y_train)
+    np.savez_compressed(sys.argv[6] + '_test', y=y_test)
