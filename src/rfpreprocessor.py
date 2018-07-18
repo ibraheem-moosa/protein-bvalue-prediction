@@ -45,8 +45,20 @@ def seq_to_local_freq(seq, window_size):
     return local_freqs
 
 
+def seq_to_markov_probability(seq, freq):
+    prob = [[0.0] * 21]*21
+    prev = -1
+    for aa in seq:
+        prob[prev][aa] += 1
+        prev = aa
+    for i in range(21):
+    	for j in range(21):
+    	    if(freq[i] != 0):
+    	        prob[i][j]= prob[i][j] / freq[i]
+    return prob
+
 def protein_to_features(seq, ws, local_freq_ws):
-    num_of_columns = 1 + 21 + 21 + (2 * ws + 1)
+    num_of_columns = 1 + 21 + 21 + (2 * ws + 1) + 21*21
     non_zero_elem_per_row = num_of_columns
     data = []
     indices = []
@@ -54,6 +66,8 @@ def protein_to_features(seq, ws, local_freq_ws):
     windows = seq_to_windows(seq, ws)
     local_freqs = seq_to_local_freq(seq, local_freq_ws)
     global_freq = seq_to_freq(seq)
+    global_markov_probability = seq_to_markov_probability(seq, global_freq)
+    
     for i in range(len(seq)):
         # relative position
         pos = i / len(seq)
@@ -67,10 +81,17 @@ def protein_to_features(seq, ws, local_freq_ws):
         for j in range(21):
             data.append(local_freqs[i][j])
             indices.append(1 + 21 + j)
+            
+        # markov probability
+        for j in range(21):
+            for k in range(21):
+                data.append(global_markov_probability[j][k])
+                indices.append(1 + 21 + 21 + j*21 + k)
+        
         # amino acids in window in one hot representation
         for j in range(len(windows[i])):
             data.append(windows[i][j])
-            indices.append(1 + 21 + 21 + j)
+            indices.append(1 + 21 + 21 + 21*21 + j)
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
         
     return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
@@ -79,7 +100,7 @@ def protein_to_features(seq, ws, local_freq_ws):
 def ndarray_from_files(files, window_size, local_freq_ws):
     y = []
     currently_processing = 0
-    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1)
+    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) + 21*21
     non_zero_elem_per_row = num_of_columns
 
     X = scsp.csr_matrix((0, num_of_columns))
@@ -123,7 +144,7 @@ if __name__ == '__main__':
     files = os.listdir(sys.argv[1])
     random.seed(42)
     random.shuffle(files)
-    num_of_train = int(0.6 * len(files))
+    num_of_train = int(0.9 * len(files))
     train_files = files[:num_of_train]
     test_files = files[num_of_train:]
     if num_of_proteins < len(files):
