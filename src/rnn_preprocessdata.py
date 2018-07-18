@@ -62,7 +62,7 @@ if __name__ == '__main__':
             seq.append(aa_to_index(a))
             if target_available:
                 b = float(line[1])
-                if(b < 0):
+                if(b <= 0):
                     print(protein)
                 bfactors.append(b)
         X = protein_to_features(seq)

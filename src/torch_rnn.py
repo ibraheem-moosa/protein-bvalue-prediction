@@ -121,8 +121,8 @@ if __name__ == '__main__':
     torch.manual_seed(42)
     import sys
 
-    if len(sys.argv) < 7:
-        print('Usage: python3 regression.py data_dir X_files y_files validation_dir X_validation_files y_validation_files checkpoint_dir [warm_start_model] [warm_start_epoch]')
+    if len(sys.argv) < 4:
+        print('Usage: python3 regression.py data_dir X_files y_files checkpoint_dir [warm_start_model] [warm_start_epoch]')
         exit()
 
     import time
@@ -137,16 +137,6 @@ if __name__ == '__main__':
     y_files = []
     for line in y_files_list:
         y_files.append(os.path.join(sys.argv[1], line[:-1]))
-
-    X_validation_files_list = open(sys.argv[5])
-    X_validation_files = []
-    for line in X_validation_files_list:
-        X_validation_files.append(os.path.join(sys.argv[4], line[:-1]))
-    y_validation_files_list = open(sys.argv[6])
-    y_validation_files = []
-    for line in y_validation_files_list:
-        y_validation_files.append(os.path.join(sys.argv[4], line[:-1]))
-
 
     import random
     indices = list(range(len(X_files)))
@@ -164,9 +154,9 @@ if __name__ == '__main__':
     print('Validation dataset init done ', len(validation_dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
 
-    if len(sys.argv) == 10:
-        warm_start_model_params = torch.load(sys.argv[8])
-        warm_start_last_epoch = int(sys.argv[9])
+    if len(sys.argv) == 7:
+        warm_start_model_params = torch.load(sys.argv[5])
+        warm_start_last_epoch = int(sys.argv[6])
     else:
         warm_start_model_params = None
         warm_start_last_epoch = -1
@@ -181,7 +171,7 @@ if __name__ == '__main__':
     hidden_size = 8
     hidden_scale = 0.1
     num_hidden_layers = 1
-    output_layer_depth = 4
+    output_layer_depth = 2
     ff_scale = 0.6
     grad_clip = 10.0
     nesterov = True
@@ -296,8 +286,7 @@ if __name__ == '__main__':
         print(time.strftime('%Y-%m-%d %H:%M'))
     #    for g in optimizer.param_groups:
     #        g['lr'] = init_lr / sqrt(epoch + 1)
-        if (epoch + 1) % 20 == 0:
-            torch.save(net.state_dict(), os.path.join(sys.argv[7], 'net-{0:02d}'.format(epoch)))
+        torch.save(net.state_dict(), os.path.join(sys.argv[4], 'net-{0:02d}'.format(epoch)))
 
     save_net = input('Do you want to save the net?')
     if 'y' in save_net:
