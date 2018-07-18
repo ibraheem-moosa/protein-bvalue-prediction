@@ -66,7 +66,7 @@ def protein_to_features(seq, ws, local_freq_ws):
     windows = seq_to_windows(seq, ws)
     local_freqs = seq_to_local_freq(seq, local_freq_ws)
     global_freq = seq_to_freq(seq)
-    global_markov_probability = seq_to_markov_probability(seq, global_freq)
+    #global_markov_probability = seq_to_markov_probability(seq, global_freq)
     
     for i in range(len(seq)):
         # relative position
@@ -82,16 +82,20 @@ def protein_to_features(seq, ws, local_freq_ws):
             data.append(local_freqs[i][j])
             indices.append(1 + 21 + j)
             
-        # markov probability
-        for j in range(21):
-            for k in range(21):
-                data.append(global_markov_probability[j][k])
-                indices.append(1 + 21 + 21 + j*21 + k)
+
         
         # amino acids in window in one hot representation
         for j in range(len(windows[i])):
             data.append(windows[i][j])
-            indices.append(1 + 21 + 21 + 21*21 + j)
+            indices.append(1 + 21 + 21 + j)
+            
+       
+        # markov probability
+        for j in range(21):
+            for k in range(21):
+                data.append(global_markov_probability[j][k])
+                indices.append(1 + 21 + 21 + len(windows[i]) + j*21 + k)
+            
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
         
     return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
