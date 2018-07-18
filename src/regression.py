@@ -128,9 +128,9 @@ clf = MLPRegressor(hidden_layer_sizes=(768,128,64,32,16,16,8), activation='relu'
 '''
 
 
-#clf = RandomForestRegressor(n_estimators=50, n_jobs=4, verbose=10, max_depth=4, max_features='sqrt')
+clf = RandomForestRegressor(n_estimators=5000, n_jobs=4, verbose=10, max_depth=7, max_features='sqrt')
 
-clf, final_clf = train(X_train, y_train)
+#clf, final_clf = train(X_train, y_train)
 
 
 #clf = Ridge(alpha=0.5, copy_X=True, fit_intercept=True, max_iter=1000,
@@ -149,26 +149,25 @@ clf, final_clf = train(X_train, y_train)
 #                      max_samples=1.0, verbose=5, n_jobs=2)
 
 
-#clf.fit(X_train, y_train)
+clf.fit(X_train, y_train)
+y_test_pred = clf.predict(X_test)
+y_train_pred = clf.predict(X_train)
 #fi = clf.feature_importances_
 #print(np.argsort(fi))
 # there is sudden spike in memory consumption here
 
+#print(clf[0])
+#print(final_clf)
 
-
-
-print(clf[0])
-print(final_clf)
-
-
+print(clf)
 
 
 
 gc.collect()
 
 length = len(y_test)
-y_test_pred = test(clf, final_clf, X_test)
-y_train_pred = test(clf, final_clf, X_train)
+#y_test_pred = test(clf, final_clf, X_test)
+#y_train_pred = test(clf, final_clf, X_train)
 
 
 print("testing done...................")

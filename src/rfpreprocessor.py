@@ -144,11 +144,13 @@ if __name__ == '__main__':
     files = os.listdir(sys.argv[1])
     random.seed(42)
     random.shuffle(files)
+    if num_of_proteins < len(files):
+        files = random.sample(files, num_of_proteins)
+
     num_of_train = int(0.9 * len(files))
     train_files = files[:num_of_train]
     test_files = files[num_of_train:]
-    if num_of_proteins < len(files):
-        files = random.sample(files, num_of_proteins)
+
 
     window_size = int(sys.argv[3])
     local_freq_ws = int(sys.argv[4])
