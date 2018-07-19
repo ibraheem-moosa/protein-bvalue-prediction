@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     import os
 
-    protein_list = open(sys.argv[3]).read().split()
+    protein_list = open(sys.argv[3]).read().split(',')
     print('Total proteins:', len(protein_list))
 
     currently_processing = 0
@@ -56,7 +56,11 @@ if __name__ == '__main__':
         if target_available:
             bfactors = []
         fname = protein.lower()
-        for line in open(os.path.join(sys.argv[1], fname)):
+        try:
+            f = open(os.path.join(sys.argv[1], fname))
+        except:
+            continue
+        for line in f: 
             line = line.split()
             a = line[0].strip()
             seq.append(aa_to_index(a))
@@ -65,6 +69,7 @@ if __name__ == '__main__':
                 if(b <= 0):
                     print(protein)
                 bfactors.append(b)
+        f.close()
         X = protein_to_features(seq)
         assert(X.shape[0] == len(bfactors))
         if target_available:
