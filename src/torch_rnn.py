@@ -314,7 +314,7 @@ if __name__ == '__main__':
     weight_decay = 1e-7
     hidden_size = 8
     hidden_scale = 0.1
-    num_hidden_layers = 1
+    num_hidden_layers = 2
     output_layer_depth = 2
     ff_scale = 0.6
     grad_clip = 10.0
