@@ -91,6 +91,7 @@ class ProteinDataset(torch.utils.data.Dataset):
             assert(X.shape[0] == y.shape[0])
             self._Xes.append(X)
             self._yes.append(y)
+        '''
         self._Xes = sorted(self._Xes, key=lambda x: x.shape[0])
         self._yes = sorted(self._yes, key=lambda y: y.shape[0])
         to_be_collated_Xes = [self._Xes[0]]
@@ -110,9 +111,12 @@ class ProteinDataset(torch.utils.data.Dataset):
                 to_be_collated_yes = [y]
         self._Xes = collated_Xes
         self._yes = collated_yes
+        '''
 
     def __getitem__(self, idx):
-        return self._Xes[idx], self._yes[idx]
+        X = self._Xes[idx]
+        y = self._yes[idx]
+        return X.view(1, X.shape[0], X.shape[1]), y.view(1, y.shape[0], y.shape[1])
 
     def __len__(self):
         return len(self._Xes)
@@ -153,12 +157,12 @@ def get_avg_pcc(net, dataset, indices):
     pcc[np.isnan(pcc)] = 0
     return np.mean(pcc)
 
-def train_nn(net, dataset, train_indices, validation_indices, optimizer, criterion, scheduler, model_dir, patience=10):
+def train_nn(net, dataset, train_indices, validation_indices, optimizer, criterion, scheduler, model_dir=None, patience=10, warm_start_last_epoch=-1):
     best_validation_pcc_epoch = 0
     best_validation_pcc = 0.0
     validation_pccs = []
     train_pccs = []
-    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 500):
+    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 30):
         print(time.strftime('%Y-%m-%d %H:%M:%S'))
 
         scheduler.step()
@@ -188,13 +192,38 @@ def train_nn(net, dataset, train_indices, validation_indices, optimizer, criteri
             best_validation_pcc = validation_pcc
             best_validation_pcc_epoch = epoch
 
-        torch.save(net.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
+        if model_dir is not None:
+            torch.save(net.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
 
-        if epoch - best_validation_pcc_epoch == 10:
+        if epoch - best_validation_pcc_epoch == patience:
             break
 
     return net, train_pccs, validation_pccs
 
+def cross_validation(net, optimizer, criterion, scheduler, dataset, indices, k, threshold):
+    n = len(indices) // k
+    r = len(indices) - n * k
+    fold_lengths = [n + 1] * r + [n] * (k - r)
+    cumulative_fl = [0]
+    for fl in fold_lengths:
+        cumulative_fl.append(cumulative_fl[-1] + fl)
+    scores = []
+    for i in range(k):
+        print('Cross Validation Fold: {}'.format(i))
+        train_indices = []
+        validation_indices = []
+        for j in range(k):
+            if j == i:
+                validation_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
+            else:
+                train_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
+        net, train_pccs, validation_pccs = train_nn(net, dataset, train_indices, validation_indices, optimizer, criterion, scheduler)
+        validation_pcc = max(validation_pccs)
+        scores.append(validation_pcc)
+        if validation_pcc < threshold:
+            break
+        net._init_weights_()
+    return scores
 
 if __name__ == '__main__':
 
@@ -225,9 +254,9 @@ if __name__ == '__main__':
     
     indices = list(range(len(dataset)))
     random.shuffle(indices)
-    indices = indices[:100]
-    train_indices = indices[:80]
-    validation_indices = indices[80:]
+    indices = indices[:1000]
+    train_indices = indices[:800]
+    validation_indices = indices[800:]
 
     if len(sys.argv) == 6:
         warm_start_model_params = torch.load(sys.argv[4])
@@ -276,5 +305,7 @@ if __name__ == '__main__':
 
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
     
-    train_nn(net, dataset, train_indices, validation_indices, optimizer, criterion, scheduler, sys.argv[3])
+    #train_nn(net, dataset, train_indices, validation_indices, optimizer, criterion, scheduler, sys.argv[3])
+    scores = cross_validation(net, optimizer, criterion, scheduler, dataset, indices, 10, 0.40)
+    print(scores)
 
