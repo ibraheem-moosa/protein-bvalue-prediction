@@ -68,7 +68,7 @@ if __name__ == '__main__':
         X = protein_to_features(seq)
         assert(X.shape[0] == len(bfactors))
         if target_available:
-            #bfactors = np.log(np.array(bfactors))
+            bfactors = np.log(np.array(bfactors))
             bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
             bfactors = np.array(bfactors, dtype=np.float32)
 

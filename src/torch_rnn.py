@@ -8,6 +8,14 @@ import torch.utils.data
 import scipy.sparse as scsp
 from bisect import bisect
 import matplotlib.pyplot as plt
+from math import sqrt
+import torch.optim as optim
+from sklearn.metrics import r2_score
+from scipy.stats import pearsonr
+import sys
+import time
+import os
+import random
 
 class FixedWidthFeedForwardNeuralNetwork(nn.Module):
     def __init__(self, width, num_outputs, num_layers, activation):
@@ -18,7 +26,7 @@ class FixedWidthFeedForwardNeuralNetwork(nn.Module):
         for i in range(num_layers):
             self.register_parameter('FF' + str(i) + '_weight_', self.linear_layers[i].weight)
             self.register_parameter('FF' + str(i) + '_bias_', self.linear_layers[i].bias)
-        
+
     def forward(self, x):
         out = self.activation(self.linear_layers[0](x))
         for i in range(1, len(self.linear_layers) - 1):
@@ -31,20 +39,20 @@ class RecurrentNeuralNetwork(nn.Module):
         super(RecurrentNeuralNetwork, self).__init__()
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
-        self.rnn_layer = nn.RNN(input_size=input_size, hidden_size=hidden_size, 
+        self.rnn_layer = nn.RNN(input_size=input_size, hidden_size=hidden_size,
                 nonlinearity='relu', num_layers=num_hidden_layers, batch_first=True, bidirectional=True)
-        self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * (2 if self.rnn_layer.bidirectional else 1), 
-                                                                    1, 
+        self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * (2 if self.rnn_layer.bidirectional else 1),
+                                                                    1,
                                                                     output_layer_depth, leaky_relu)
         self._init_weights_()
 
     def forward(self, x):
-        out, h = self.rnn_layer(x, torch.zeros(self.num_hidden_layers * (2 if self.rnn_layer.bidirectional else 1), 
-                                                                                    x.shape[0], 
+        out, h = self.rnn_layer(x, torch.zeros(self.num_hidden_layers * (2 if self.rnn_layer.bidirectional else 1),
+                                                                                    x.shape[0],
                                                                                     self.hidden_size))
         out = self.output_layer(out)
         return out
-    
+
     def _init_weights_(self):
         ff_init_method = nn.init.normal_
         hidden_weight_init_method = nn.init.eye_
@@ -59,7 +67,7 @@ class RecurrentNeuralNetwork(nn.Module):
                 ff_init_method(param, std=ff_scale)
             else:
                 bias_init_method(param, 0)
-        
+
         for name, param in self.output_layer.named_parameters():
             if 'weight' in name:
                 ff_init_method(param, std=ff_scale)
@@ -74,10 +82,10 @@ class RecurrentNeuralNetwork(nn.Module):
 
 class ProteinDataset(torch.utils.data.Dataset):
 
-    def __init__(self, X_files, y_files):
+    def __init__(self, files):
         self._Xes = []
         self._yes = []
-        for xf,yf in zip(X_files, y_files):
+        for xf,yf in files:
             X = torch.from_numpy(scsp.load_npz(xf).toarray()).reshape((-1, 21))
             y = torch.from_numpy(np.load(yf)['y']).reshape((-1, 1))
             assert(X.shape[0] == y.shape[0])
@@ -102,7 +110,7 @@ class ProteinDataset(torch.utils.data.Dataset):
                 to_be_collated_yes = [y]
         self._Xes = collated_Xes
         self._yes = collated_yes
-        
+
     def __getitem__(self, idx):
         return self._Xes[idx], self._yes[idx]
 
@@ -115,56 +123,120 @@ def summarize_tensor(tensor):
 def close_event():
     plt.close()
 
+def plot_true_and_prediction(y_true, y_pred):
+    fig = plt.figure()
+    timer = fig.canvas.new_timer(interval=10000)
+    timer.add_callback(close_event)
+    plt.title('Bidirectional, 8 Hidden States, 2 Output Layers')
+    plt.plot(y_pred, 'y-')
+    plt.plot(y_true, 'g-')
+    timer.start()
+    plt.show()
+
+def summarize_nn(net):
+    print('##############################################################')
+    for name, param in net.named_parameters():
+        print('---------------------------------------------------------------')
+        print(name)
+        print(summarize_tensor(param))
+    print('##############################################################')
+
+def get_avg_pcc(net, dataset, indices):
+    pcc = []
+    for i in indices:
+        x, y = dataset[i]
+        y_pred = net.predict(x)
+        for j in range(x.shape[0]):
+            pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
+
+    pcc = np.array(pcc)
+    pcc[np.isnan(pcc)] = 0
+    return np.mean(pcc)
+
+def train_nn(net, dataset, train_indices, validation_indices, optimizer, criterion, scheduler, model_dir, patience=10):
+    best_validation_pcc_epoch = 0
+    best_validation_pcc = 0.0
+    validation_pccs = []
+    train_pccs = []
+    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 500):
+        print(time.strftime('%Y-%m-%d %H:%M:%S'))
+
+        scheduler.step()
+        running_loss = 0.0
+        random.shuffle(train_indices)
+        for i in train_indices:
+            x, y = dataset[i]
+            optimizer.zero_grad()
+            y_pred = net(x)
+            loss = criterion(y_pred, y)
+            loss.backward()
+            nn.utils.clip_grad_value_(net.parameters(), grad_clip)
+            optimizer.step()
+            running_loss += loss.item()
+
+        print('Epoch: {} done. Loss: {}'.format(
+                                epoch, running_loss / len(dataset)))
+
+        train_pcc = get_avg_pcc(net, dataset, train_indices)
+        train_pccs.append(train_pcc)
+        print('Train Avg PCC: {}'.format(train_pcc))
+
+        validation_pcc = get_avg_pcc(net, dataset, validation_indices)
+        validation_pccs.append(validation_pcc)
+        print('Validation Avg PCC: {}'.format(validation_pcc))
+        if validation_pcc > best_validation_pcc:
+            best_validation_pcc = validation_pcc
+            best_validation_pcc_epoch = epoch
+
+        torch.save(net.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
+
+        if epoch - best_validation_pcc_epoch == 10:
+            break
+
+    return net, train_pccs, validation_pccs
+
+
 if __name__ == '__main__':
 
     torch.set_printoptions(precision=2, linewidth=140)
     torch.manual_seed(42)
-    import sys
 
     if len(sys.argv) < 4:
-        print('Usage: python3 regression.py data_dir X_files y_files checkpoint_dir [warm_start_model] [warm_start_epoch]')
+        print('Usage: python3 regression.py data_dir protein_list checkpoint_dir [warm_start_model] [warm_start_epoch]')
         exit()
 
-    import time
     print(time.strftime('%Y-%m-%d %H:%M'))
 
-    import os
-    X_files_list = open(sys.argv[2])
+    with open(sys.argv[2]) as protein_list_file:
+        protein_list = protein_list_file.read().split()
+        protein_list = [s.upper().strip() for s in protein_list]
+
     X_files = []
-    for line in X_files_list:
-        X_files.append(os.path.join(sys.argv[1], line[:-1]))
-    y_files_list = open(sys.argv[3])
     y_files = []
-    for line in y_files_list:
-        y_files.append(os.path.join(sys.argv[1], line[:-1]))
 
-    import random
-    indices = list(range(len(X_files)))
-    random.shuffle(indices)
+    for protein in protein_list:
+        X_files.append(os.path.join(sys.argv[1], 'X_' + protein + '_rnn_.npz'))
+        y_files.append(os.path.join(sys.argv[1], 'y_' + protein + '_rnn_.npz'))
 
-    X_files = [X_files[i] for i in indices]
-    y_files = [y_files[i] for i in indices]
-    X_validation_files = X_files[-len(indices) // 5:]
-    y_validation_files = y_files[-len(indices) // 5:]
-    X_files = X_files[:-len(indices) // 5]
-    y_files = y_files[:-len(indices) // 5]
-    dataset = ProteinDataset(X_files, y_files)
+    files = list(zip(X_files, y_files))
+    dataset = ProteinDataset(files)
     print('Dataset init done ', len(dataset))
-    validation_dataset = ProteinDataset(X_validation_files, y_validation_files)
-    print('Validation dataset init done ', len(validation_dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
+    
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+    indices = indices[:100]
+    train_indices = indices[:80]
+    validation_indices = indices[80:]
 
-    if len(sys.argv) == 7:
-        warm_start_model_params = torch.load(sys.argv[5])
-        warm_start_last_epoch = int(sys.argv[6])
+    if len(sys.argv) == 6:
+        warm_start_model_params = torch.load(sys.argv[4])
+        warm_start_last_epoch = int(sys.argv[5])
     else:
         warm_start_model_params = None
         warm_start_last_epoch = -1
 
     batch_size = 1
-    #dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=4, shuffle=True)
-    #validation_dataloader = torch.utils.data.DataLoader(validation_dataset, batch_size=batch_size, num_workers=4)
-
     init_lr = 0.008
     momentum = 0.9
     weight_decay = 1e-7
@@ -194,8 +266,6 @@ if __name__ == '__main__':
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
-    from math import sqrt
-    import torch.optim as optim
     criterion = nn.MSELoss()
     #optimizer = optim.SGD([{'params' : net.parameters(), 'initial_lr' : init_lr}],
     #                        lr=init_lr, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov)
@@ -205,91 +275,6 @@ if __name__ == '__main__':
     #                        lr=init_lr, weight_decay=weight_decay)
 
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
-
-    from sklearn.metrics import r2_score
-    from scipy.stats import pearsonr
-
-    indices = list(range(len(dataset)))
-    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 500):
-        scheduler.step()
-        running_loss = 0.0
-        random.shuffle(indices)
-        for i in indices:
-            x, y = dataset[i]
-            optimizer.zero_grad()
-            y_pred = net(x)
-            loss = criterion(y_pred, y)
-            loss.backward()
-            nn.utils.clip_grad_value_(net.parameters(), grad_clip)
-            optimizer.step()
-            running_loss += loss.item()
-
-        print(time.strftime('%Y-%m-%d %H:%M'))
-        print('Epoch: {} done. Loss: {}'.format(
-                                epoch, running_loss / len(dataset)))
-        print('##############################################################')
-        for name, param in net.named_parameters():
-            print('---------------------------------------------------------------')
-            print(name)
-            print(summarize_tensor(param))
-        print('##############################################################')
-
-        '''
-        print('\tInput Weight Grad: {}'.format(summarize_tensor(layer1_input_grad)))
-        print('\tInput Weight: {}'.format(summarize_tensor(net.layer1.weight_ih_l0)))
-        print('\tInput Bias Grad: {}'.format(summarize_tensor(layer1_input_bias_grad)))
-        print('\tInput Bias: {}'.format(summarize_tensor(net.layer1.bias_ih_l0)))
-        
-        print('\tHidden Weight Grad: {}'.format(summarize_tensor(layer1_hidden_grad)))
-        print('\tHidden Weight: {}'.format(summarize_tensor(net.layer1.weight_hh_l0)))
-        print('\tHidden Bias Grad: {}'.format(summarize_tensor(layer1_hidden_bias_grad)))
-        print('\tHidden Bias: {}'.format(summarize_tensor(net.layer1.bias_hh_l0)))
-        
-        print('\tOutput Weight Grad: {}'.format(summarize_tensor(layer2_grad)))
-        print('\tOutput Weight: {}'.format(summarize_tensor(net.layer2.weight)))
-        print('\tOutput Bias Grad: {}'.format(summarize_tensor(layer2_bias_grad)))
-        print('\tOutput Bias: {}'.format(summarize_tensor(net.layer2.bias)))
-        '''
-
-        validation_pcc = []
-        for i in range(len(validation_dataset)):
-            x, y = validation_dataset[i]
-            y_pred = net.predict(x)
-            for j in range(x.shape[0]):
-                validation_pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
-                if random.random() > 0.998:
-                    fig = plt.figure()
-                    timer = fig.canvas.new_timer(interval=10000)
-                    timer.add_callback(close_event)
-                    plt.title('Bidirectional, 256 Hidden States, 8 Output Layers')
-                    plt.plot(y_pred.numpy()[j].flatten(), 'y-')
-                    plt.plot(y.numpy()[j].flatten(), 'g-')
-                    timer.start()
-                    plt.show()
-        validation_pcc = np.array(validation_pcc)
-        validation_pcc[np.isnan(validation_pcc)] = 0
-        print('Validation PCC Done')
-        train_pcc = []
-        for i in range(len(dataset)):
-            x, y = dataset[i]
-            y_pred = net.predict(x)
-            for j in range(x.shape[0]):
-                train_pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
-        train_pcc = np.array(train_pcc)
-        train_pcc[np.isnan(train_pcc)] = 0
-
-        '''
-        R2 = 1 - (mean squared error) / (Variance of truth)
-        '''
-        print('Validation Avg PCC: {}'.format(np.mean(validation_pcc)))
-        print('Train Avg PCC: {}'.format(np.mean(train_pcc)))
-        print(time.strftime('%Y-%m-%d %H:%M'))
-    #    for g in optimizer.param_groups:
-    #        g['lr'] = init_lr / sqrt(epoch + 1)
-        torch.save(net.state_dict(), os.path.join(sys.argv[4], 'net-{0:02d}'.format(epoch)))
-
-    save_net = input('Do you want to save the net?')
-    if 'y' in save_net:
-        fname = input('File Name;')
-        torch.save(net.state_dict(), fname)
+    
+    train_nn(net, dataset, train_indices, validation_indices, optimizer, criterion, scheduler, sys.argv[3])
 
