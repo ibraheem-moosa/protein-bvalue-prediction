@@ -35,7 +35,7 @@ class FixedWidthFeedForwardNeuralNetwork(nn.Module):
         return out
 
 class RecurrentNeuralNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size=8, output_layer_depth=1,  num_hidden_layers=1, hidden_scale=1.0, ff_scale=0.001):
+    def __init__(self, input_size, hidden_size=8, output_layer_depth=1,  num_hidden_layers=1, hidden_scale=1.0, ff_scale=0.001, init_lr=1e-3, gamma=0.99, weight_decay=0.1):
         super(RecurrentNeuralNetwork, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -43,6 +43,9 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.hidden_scale = hidden_scale
         self.ff_scale = ff_scale
+        self.init_lr = init_lr
+        self.gamma = gamma
+        self.weight_decay = weight_decay
         self.rnn_layer = nn.RNN(input_size=self.input_size, 
                                 hidden_size=self.hidden_size,
                                 nonlinearity='relu',
@@ -50,14 +53,14 @@ class RecurrentNeuralNetwork(nn.Module):
                                 batch_first=True, 
                                 bidirectional=True)
         self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * 2, 1, output_layer_depth, leaky_relu)
-        self._init_weights_(self.hidden_scale, self.ff_scale)
+        self._init_weights_()
 
     def forward(self, x):
         out, h = self.rnn_layer(x)
         out = self.output_layer(out)
         return out
 
-    def _init_weights_(self, hidden_scale=1.0, ff_scale=0.001):
+    def _init_weights_(self):
         ff_init_method = nn.init.normal_
         hidden_weight_init_method = nn.init.eye_
         bias_init_method = nn.init.constant_
@@ -92,7 +95,7 @@ class RecurrentNeuralNetwork(nn.Module):
                                 batch_first=True, 
                                 bidirectional=True)
         self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * 2, 1, output_layer_depth, leaky_relu)
-        self._init_weights_(self.hidden_scale, self.ff_scale)
+        self._init_weights_()
 
 
 class ProteinDataset(torch.utils.data.Dataset):
@@ -172,7 +175,19 @@ def get_avg_pcc(net, dataset, indices):
     pcc[np.isnan(pcc)] = 0
     return np.mean(pcc)
 
-def train_nn(net, optimizer, criterion, scheduler, dataset, train_indices, validation_indices, model_dir=None, patience=10, warm_start_last_epoch=-1):
+def train_nn(net, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1):
+    criterion = nn.MSELoss()
+    #optimizer = optim.SGD([{'params' : net.parameters(), 'initial_lr' : init_lr}],
+    #                        lr=init_lr, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov)
+    optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : net.init_lr}],
+                            lr=net.init_lr, weight_decay=net.weight_decay, amsgrad=False)
+    #optimizer = optim.Adadelta([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
+    #                        lr=init_lr, weight_decay=weight_decay)
+
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, net.gamma)
+
+    net._init_weights_()
+    
     best_validation_pcc_epoch = 0
     best_validation_pcc = 0.0
     validation_pccs = []
@@ -194,7 +209,7 @@ def train_nn(net, optimizer, criterion, scheduler, dataset, train_indices, valid
             running_loss += loss.item()
 
         print('Epoch: {} done. Loss: {}'.format(
-                                epoch, running_loss / len(dataset)))
+                                epoch, running_loss / len(train_indices)))
 
         train_pcc = get_avg_pcc(net, dataset, train_indices)
         train_pccs.append(train_pcc)
@@ -215,7 +230,7 @@ def train_nn(net, optimizer, criterion, scheduler, dataset, train_indices, valid
 
     return net, train_pccs, validation_pccs
 
-def cross_validation(net, optimizer, criterion, scheduler, dataset, indices, k, threshold):
+def cross_validation(net, dataset, indices, k, threshold):
     n = len(indices) // k
     r = len(indices) - n * k
     fold_lengths = [n + 1] * r + [n] * (k - r)
@@ -224,7 +239,6 @@ def cross_validation(net, optimizer, criterion, scheduler, dataset, indices, k, 
         cumulative_fl.append(cumulative_fl[-1] + fl)
     scores = []
     for i in range(k):
-        net._init_weights_()
         print('Cross Validation Fold: {}'.format(i))
         train_indices = []
         validation_indices = []
@@ -233,7 +247,7 @@ def cross_validation(net, optimizer, criterion, scheduler, dataset, indices, k, 
                 validation_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
             else:
                 train_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
-        net, train_pccs, validation_pccs = train_nn(net, optimizer, criterion, scheduler, dataset, train_indices, validation_indices) 
+        net, train_pccs, validation_pccs = train_nn(net, dataset, train_indices, validation_indices) 
         validation_pcc = max(validation_pccs)
         scores.append(validation_pcc)
         if validation_pcc < threshold:
@@ -249,7 +263,7 @@ def get_param_config(param_grid, keys):
             for rest_config in get_param_config(param_grid, keys[1:]):
                 yield keys[0], value, rest_config
 
-def gridsearchcv(net, optimizer, criterion, scheduler, dataset, indices, k, threshold, param_grid, param_set_funcs):
+def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_funcs):
     result = []
     num_of_params = len(param_grid)
     for param_config in get_param_config(param_grid, list(param_grid.keys())):
@@ -258,12 +272,12 @@ def gridsearchcv(net, optimizer, criterion, scheduler, dataset, indices, k, thre
         while True:
             key, value, next_param_config = next_param_config
             param_config_dict[key] = value
-            param_set_funcs[key](net, optimizer, scheduler, value)
+            param_set_funcs[key](net, value)
             if next_param_config is None:
                 break
             
         print('Running CV for params {}'.format(param_config_dict))
-        scores = cross_validation(net, optimizer, criterion, scheduler, dataset, indices, k, threshold)
+        scores = cross_validation(net, dataset, indices, k, threshold)
         mean_score = sum(scores) / len(scores)
         result.append((param_config_dict, mean_score))
     return result
@@ -297,9 +311,9 @@ if __name__ == '__main__':
     
     indices = list(range(len(dataset)))
     random.shuffle(indices)
-    indices = indices[:1000]
-    train_indices = indices[:800]
-    validation_indices = indices[800:]
+    indices = indices[:500]
+    train_indices = indices[:int(0.8 * len(indices))]
+    validation_indices = indices[int(0.8 * len(indices)):]
 
     if len(sys.argv) == 6:
         warm_start_model_params = torch.load(sys.argv[4])
@@ -312,6 +326,7 @@ if __name__ == '__main__':
     init_lr = 0.008
     momentum = 0.9
     weight_decay = 1e-7
+    gamma = 0.99
     hidden_size = 8
     hidden_scale = 0.1
     num_hidden_layers = 2
@@ -333,30 +348,24 @@ if __name__ == '__main__':
     print('Adam')
     #print('Adadelta')
 
-    net = RecurrentNeuralNetwork(21, hidden_size=hidden_size, hidden_scale=hidden_scale, 
-            num_hidden_layers=num_hidden_layers, ff_scale=ff_scale, output_layer_depth=output_layer_depth)
+    net = RecurrentNeuralNetwork(21,
+            hidden_size=hidden_size,
+            num_hidden_layers=num_hidden_layers,
+            output_layer_depth=output_layer_depth,
+            hidden_scale=hidden_scale, ff_scale=ff_scale, 
+            init_lr=init_lr, gamma=gamma, weight_decay=weight_decay)
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
-    criterion = nn.MSELoss()
-    #optimizer = optim.SGD([{'params' : net.parameters(), 'initial_lr' : init_lr}],
-    #                        lr=init_lr, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov)
-    optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
-                            lr=init_lr, weight_decay=weight_decay, amsgrad=False)
-    #optimizer = optim.Adadelta([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
-    #                        lr=init_lr, weight_decay=weight_decay)
-
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
-    
-    #train_nn(net, optimizer, criterion, scheduler, dataset, train_indices, validation_indices, sys.argv[3])
-    #scores = cross_validation(net, optimizer, criterion, scheduler, dataset, indices, 10, 0.40)
+    #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
+    #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
     
-    param_grid = {'init_lr' : 10.0 ** np.arange(-5,0), 'hidden_size' : 2 ** np.arange(0, 7)}
-    def set_init_lr(net, optimizer, scheduler, value):
-        optimizer.init_lr = value
-    def set_hidden_size(net, optimizer, scheduler, value):
+    param_grid = {'init_lr' : 10.0 ** np.arange(-3,0), 'hidden_size' : [1, 2, 4, 8]}
+    def set_init_lr(net, value):
+        net.init_lr = value
+    def set_hidden_size(net, value):
         net.reset_hidden_size(value)
     param_set_funcs = {'init_lr' : set_init_lr, 'hidden_size' : set_hidden_size}
-    results = gridsearchcv(net, optimizer, criterion, scheduler, dataset, indices, 5, 0.40, param_grid, param_set_funcs)
+    results = gridsearchcv(net, dataset, indices, 3, 0.40, param_grid, param_set_funcs)
     print(results)
