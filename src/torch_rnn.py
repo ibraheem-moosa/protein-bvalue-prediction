@@ -46,6 +46,14 @@ class RecurrentNeuralNetwork(nn.Module):
         self.init_lr = init_lr
         self.gamma = gamma
         self.weight_decay = weight_decay
+        self.init_layers()
+
+    def forward(self, x):
+        out, h = self.rnn_layer(x)
+        out = self.output_layer(out)
+        return out
+
+    def init_layers(self):
         self.rnn_layer = nn.RNN(input_size=self.input_size, 
                                 hidden_size=self.hidden_size,
                                 nonlinearity='relu',
@@ -54,11 +62,6 @@ class RecurrentNeuralNetwork(nn.Module):
                                 bidirectional=True)
         self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * 2, 1, output_layer_depth, leaky_relu)
         self._init_weights_()
-
-    def forward(self, x):
-        out, h = self.rnn_layer(x)
-        out = self.output_layer(out)
-        return out
 
     def _init_weights_(self):
         ff_init_method = nn.init.normal_
@@ -88,14 +91,19 @@ class RecurrentNeuralNetwork(nn.Module):
 
     def reset_hidden_size(self, hidden_size):
         self.hidden_size = hidden_size
-        self.rnn_layer = nn.RNN(input_size=self.input_size, 
-                                hidden_size=self.hidden_size,
-                                nonlinearity='relu',
-                                num_layers=self.num_hidden_layers,
-                                batch_first=True, 
-                                bidirectional=True)
-        self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * 2, 1, output_layer_depth, leaky_relu)
-        self._init_weights_()
+        self.init_layers()
+
+    def reset_weight_decay(self, weight_decay):
+        self.weight_decay = weight_decay
+        self.init_layers()
+
+    def reset_gamma(self, gamma):
+        self.gamma = gamma
+        self.init_layers()
+
+    def reset_output_layer_depth(self, output_layer_depth):
+        self.output_layer_depth = output_layer_depth
+        self.init_layers()
 
 
 class ProteinDataset(torch.utils.data.Dataset):
@@ -175,7 +183,7 @@ def get_avg_pcc(net, dataset, indices):
     pcc[np.isnan(pcc)] = 0
     return np.mean(pcc)
 
-def train_nn(net, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1):
+def train_nn(net, dataset, train_indices, validation_indices, model_dir=None, patience=10, warm_start_last_epoch=-1):
     criterion = nn.MSELoss()
     #optimizer = optim.SGD([{'params' : net.parameters(), 'initial_lr' : init_lr}],
     #                        lr=init_lr, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov)
@@ -192,9 +200,7 @@ def train_nn(net, dataset, train_indices, validation_indices, model_dir=None, pa
     best_validation_pcc = 0.0
     validation_pccs = []
     train_pccs = []
-    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 20):
-        print(time.strftime('%Y-%m-%d %H:%M:%S'))
-
+    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 50):
         scheduler.step()
         running_loss = 0.0
         random.shuffle(train_indices)
@@ -208,19 +214,18 @@ def train_nn(net, dataset, train_indices, validation_indices, model_dir=None, pa
             optimizer.step()
             running_loss += loss.item()
 
-        print('Epoch: {} done. Loss: {}'.format(
-                                epoch, running_loss / len(train_indices)))
-
         train_pcc = get_avg_pcc(net, dataset, train_indices)
         train_pccs.append(train_pcc)
-        print('Train Avg PCC: {}'.format(train_pcc))
 
         validation_pcc = get_avg_pcc(net, dataset, validation_indices)
         validation_pccs.append(validation_pcc)
-        print('Validation Avg PCC: {}'.format(validation_pcc))
         if validation_pcc > best_validation_pcc:
             best_validation_pcc = validation_pcc
             best_validation_pcc_epoch = epoch
+        
+        print('Epoch: {0:02d} Loss: {1:.6f} Train PCC: {2:.4f} Validation PCC {3:.4f} Time: {4}'.format(
+                                epoch, running_loss / len(train_indices), train_pcc, validation_pcc, time.strftime('%Y-%m-%d %H:%M:%S')))
+
 
         if model_dir is not None:
             torch.save(net.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
@@ -279,6 +284,7 @@ def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_func
         print('Running CV for params {}'.format(param_config_dict))
         scores = cross_validation(net, dataset, indices, k, threshold)
         mean_score = sum(scores) / len(scores)
+        print('Got score {} for params {}'.format(mean_score, param_config_dict))
         result.append((param_config_dict, mean_score))
     return result
 
@@ -323,13 +329,13 @@ if __name__ == '__main__':
         warm_start_last_epoch = -1
 
     batch_size = 1
-    init_lr = 0.008
+    init_lr = 1.0 / 128
     momentum = 0.9
-    weight_decay = 1e-7
-    gamma = 0.99
+    weight_decay = 1e-3
+    gamma = 0.9
     hidden_size = 8
     hidden_scale = 0.1
-    num_hidden_layers = 2
+    num_hidden_layers = 1
     output_layer_depth = 2
     ff_scale = 0.6
     grad_clip = 10.0
@@ -361,11 +367,22 @@ if __name__ == '__main__':
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
     
-    param_grid = {'init_lr' : 10.0 ** np.arange(-3,0), 'hidden_size' : [1, 2, 4, 8]}
+    param_grid = {'init_lr' : 2.0 ** np.arange(-8,-5), 'hidden_size' : [8], 
+                    'weight_decay' : 10.0 ** np.arange(-3,-2), 'gamma' : [0.9],
+                    'output_layer_depth' : [2,3,4,5]}
     def set_init_lr(net, value):
         net.init_lr = value
     def set_hidden_size(net, value):
         net.reset_hidden_size(value)
-    param_set_funcs = {'init_lr' : set_init_lr, 'hidden_size' : set_hidden_size}
+    def set_weight_decay(net, weight_decay):
+        net.reset_weight_decay(weight_decay)
+    def set_gamma(net, gamma):
+        net.reset_gamma(gamma)
+    def set_output_layer_depth(net, output_layer_depth):
+        net.reset_output_layer_depth(output_layer_depth)
+
+    param_set_funcs = {'init_lr' : set_init_lr, 'hidden_size' : set_hidden_size, 
+                        'weight_decay' : set_weight_decay, 'gamma' : set_gamma, 
+                        'output_layer_depth' : set_output_layer_depth}
     results = gridsearchcv(net, dataset, indices, 3, 0.40, param_grid, param_set_funcs)
     print(results)
