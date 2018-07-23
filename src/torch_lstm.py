@@ -60,7 +60,7 @@ class LSTMNeuralNetwork(nn.Module):
                                 num_layers=self.num_hidden_layers,
                                 batch_first=True, 
                                 bidirectional=True)
-        self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * 2, 1, output_layer_depth, leaky_relu)
+        self.output_layer = FixedWidthFeedForwardNeuralNetwork(self.hidden_size * 2, 1, self.output_layer_depth, leaky_relu)
         self._init_weights_()
 
     def _init_weights_(self):
@@ -337,7 +337,7 @@ if __name__ == '__main__':
     weight_decay = 1e-3
     gamma = 0.9
     hidden_size = 8
-    hidden_scale = 0.1
+    hidden_scale = 1.0
     num_hidden_layers = 1
     output_layer_depth = 2
     ff_scale = 0.6
@@ -370,7 +370,7 @@ if __name__ == '__main__':
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
     
-    param_grid = {'init_lr' : 10.0 ** np.arange(-9, 0), 'hidden_size' : [8],
+    param_grid = {'init_lr' : 2.0 ** np.arange(-10,-9), 'hidden_size' : [2,4,8],
                     'weight_decay' : 10.0 ** np.arange(-1,-0), 'gamma' : [0.9],
                     'output_layer_depth' : [2],
                     'num_hidden_layers' : [1]}

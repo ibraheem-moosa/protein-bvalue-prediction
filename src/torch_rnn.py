@@ -60,7 +60,7 @@ class RecurrentNeuralNetwork(nn.Module):
                                 num_layers=self.num_hidden_layers,
                                 batch_first=True, 
                                 bidirectional=True)
-        self.output_layer = FixedWidthFeedForwardNeuralNetwork(hidden_size * 2, 1, output_layer_depth, leaky_relu)
+        self.output_layer = FixedWidthFeedForwardNeuralNetwork(self.hidden_size * 2, 1, self.output_layer_depth, leaky_relu)
         self._init_weights_()
 
     def _init_weights_(self):
@@ -104,7 +104,10 @@ class RecurrentNeuralNetwork(nn.Module):
     def reset_output_layer_depth(self, output_layer_depth):
         self.output_layer_depth = output_layer_depth
         self.init_layers()
-
+    
+    def reset_num_hidden_layers(self, num_hidden_layers):
+        self.num_hidden_layers = num_hidden_layers
+        self.init_layers()
 
 class ProteinDataset(torch.utils.data.Dataset):
 
@@ -317,7 +320,7 @@ if __name__ == '__main__':
     
     indices = list(range(len(dataset)))
     random.shuffle(indices)
-    indices = indices[:500]
+    #indices = indices[:500]
     train_indices = indices[:int(0.8 * len(indices))]
     validation_indices = indices[int(0.8 * len(indices)):]
 
@@ -367,9 +370,10 @@ if __name__ == '__main__':
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
     
-    param_grid = {'init_lr' : 2.0 ** np.arange(-8,-5), 'hidden_size' : [8], 
+    param_grid = {'init_lr' : 2.0 ** np.arange(-7,-6), 'hidden_size' : [8],
                     'weight_decay' : 10.0 ** np.arange(-3,-2), 'gamma' : [0.9],
-                    'output_layer_depth' : [2,3,4,5]}
+                    'output_layer_depth' : [2],
+                    'num_hidden_layers' : [1, 2, 3]}
     def set_init_lr(net, value):
         net.init_lr = value
     def set_hidden_size(net, value):
@@ -380,9 +384,13 @@ if __name__ == '__main__':
         net.reset_gamma(gamma)
     def set_output_layer_depth(net, output_layer_depth):
         net.reset_output_layer_depth(output_layer_depth)
+    def set_num_hidden_layers(net, num_hidden_layers):
+        net.reset_num_hidden_layers(num_hidden_layers)
 
     param_set_funcs = {'init_lr' : set_init_lr, 'hidden_size' : set_hidden_size, 
                         'weight_decay' : set_weight_decay, 'gamma' : set_gamma, 
-                        'output_layer_depth' : set_output_layer_depth}
-    results = gridsearchcv(net, dataset, indices, 3, 0.40, param_grid, param_set_funcs)
+                        'output_layer_depth' : set_output_layer_depth,
+                        'num_hidden_layers' : set_num_hidden_layers}
+
+    results = gridsearchcv(net, dataset, indices, 3, 0.45, param_grid, param_set_funcs)
     print(results)
