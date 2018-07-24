@@ -16,6 +16,8 @@ import sys
 import time
 import os
 import random
+from torch_helper import *
+from torch_rnn_dataset import *
 
 class FixedWidthFeedForwardNeuralNetwork(nn.Module):
     def __init__(self, width, num_outputs, num_layers, activation):
@@ -35,7 +37,7 @@ class FixedWidthFeedForwardNeuralNetwork(nn.Module):
         return out
 
 class RecurrentNeuralNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size=8, output_layer_depth=1,  num_hidden_layers=1, hidden_scale=1.0, ff_scale=0.001, init_lr=1e-3, gamma=0.99, weight_decay=0.1):
+    def __init__(self, input_size, hidden_size=8, output_layer_depth=1,  num_hidden_layers=1, hidden_scale=1.0, ff_scale=0.001, init_lr=1e-3, gamma=0.99, weight_decay=0.1, grad_clip=1.0):
         super(RecurrentNeuralNetwork, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -46,6 +48,7 @@ class RecurrentNeuralNetwork(nn.Module):
         self.init_lr = init_lr
         self.gamma = gamma
         self.weight_decay = weight_decay
+        self.grad_clip = grad_clip
         self.init_layers()
 
     def forward(self, x):
@@ -71,16 +74,16 @@ class RecurrentNeuralNetwork(nn.Module):
             if 'weight_hh' in name:
                 hidden_weight_init_method(param)
                 with torch.no_grad():
-                    param.mul_(hidden_scale)
+                    param.mul_(self.hidden_scale)
                 param.requires_grad_()
             elif 'weight_ih' in name:
-                ff_init_method(param, std=ff_scale)
+                ff_init_method(param, std=self.ff_scale)
             else:
                 bias_init_method(param, 0)
 
         for name, param in self.output_layer.named_parameters():
             if 'weight' in name:
-                ff_init_method(param, std=ff_scale)
+                ff_init_method(param, std=self.ff_scale)
             else:
                 bias_init_method(param, 0)
 
@@ -109,187 +112,94 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.init_layers()
 
-class ProteinDataset(torch.utils.data.Dataset):
-
-    def __init__(self, files):
-        self._Xes = []
-        self._yes = []
-        for xf,yf in files:
-            X = torch.from_numpy(scsp.load_npz(xf).toarray()).reshape((-1, 21))
-            y = torch.from_numpy(np.load(yf)['y']).reshape((-1, 1))
-            assert(X.shape[0] == y.shape[0])
-            self._Xes.append(X)
-            self._yes.append(y)
-        '''
-        self._Xes = sorted(self._Xes, key=lambda x: x.shape[0])
-        self._yes = sorted(self._yes, key=lambda y: y.shape[0])
-        to_be_collated_Xes = [self._Xes[0]]
-        to_be_collated_yes = [self._yes[0]]
-        collated_Xes = []
-        collated_yes = []
-        for X, y in zip(self._Xes, self._yes):
-            assert(X.shape[0] == y.shape[0])
-            if X.shape[0] == to_be_collated_Xes[-1].shape[0]:
-                assert(y.shape[0] == to_be_collated_yes[-1].shape[0])
-                to_be_collated_Xes.append(X)
-                to_be_collated_yes.append(y)
-            else:
-                collated_Xes.append(torch.stack(to_be_collated_Xes))
-                collated_yes.append(torch.stack(to_be_collated_yes))
-                to_be_collated_Xes = [X]
-                to_be_collated_yes = [y]
-        self._Xes = collated_Xes
-        self._yes = collated_yes
-        '''
-
-    def __getitem__(self, idx):
-        X = self._Xes[idx]
-        y = self._yes[idx]
-        return X.view(1, X.shape[0], X.shape[1]), y.view(1, y.shape[0], y.shape[1])
-
-    def __len__(self):
-        return len(self._Xes)
-
-def summarize_tensor(tensor):
-    return torch.max(tensor).item(), torch.min(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item()
-
-def close_event():
-    plt.close()
-
-def plot_true_and_prediction(y_true, y_pred):
-    fig = plt.figure()
-    timer = fig.canvas.new_timer(interval=10000)
-    timer.add_callback(close_event)
-    plt.title('Bidirectional, 8 Hidden States, 2 Output Layers')
-    plt.plot(y_pred, 'y-')
-    plt.plot(y_true, 'g-')
-    timer.start()
-    plt.show()
-
-def summarize_nn(net):
-    print('##############################################################')
-    for name, param in net.named_parameters():
-        print('---------------------------------------------------------------')
-        print(name)
-        print(summarize_tensor(param))
-    print('##############################################################')
-
-def get_avg_pcc(net, dataset, indices):
-    pcc = []
-    for i in indices:
-        x, y = dataset[i]
-        y_pred = net.predict(x)
-        for j in range(x.shape[0]):
-            pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
-
-    pcc = np.array(pcc)
-    pcc[np.isnan(pcc)] = 0
-    return np.mean(pcc)
-
-def train_nn(net, dataset, train_indices, validation_indices, model_dir=None, patience=10, warm_start_last_epoch=-1):
-    criterion = nn.MSELoss()
-    #optimizer = optim.SGD([{'params' : net.parameters(), 'initial_lr' : init_lr}],
-    #                        lr=init_lr, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov)
-    optimizer = optim.Adam([{'params' : net.parameters(), 'initial_lr' : net.init_lr}],
-                            lr=net.init_lr, weight_decay=net.weight_decay, amsgrad=False)
-    #optimizer = optim.Adadelta([{'params' : net.parameters(), 'initial_lr' : init_lr}], 
-    #                        lr=init_lr, weight_decay=weight_decay)
-
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, net.gamma)
-
-    net._init_weights_()
-    
-    best_validation_pcc_epoch = 0
-    best_validation_pcc = 0.0
-    validation_pccs = []
-    train_pccs = []
-    for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 50):
-        scheduler.step()
-        running_loss = 0.0
-        random.shuffle(train_indices)
-        for i in train_indices:
-            x, y = dataset[i]
-            optimizer.zero_grad()
-            y_pred = net(x)
-            loss = criterion(y_pred, y)
-            loss.backward()
-            nn.utils.clip_grad_value_(net.parameters(), grad_clip)
-            optimizer.step()
-            running_loss += loss.item()
-
-        train_pcc = get_avg_pcc(net, dataset, train_indices)
-        train_pccs.append(train_pcc)
-
-        validation_pcc = get_avg_pcc(net, dataset, validation_indices)
-        validation_pccs.append(validation_pcc)
-        if validation_pcc > best_validation_pcc:
-            best_validation_pcc = validation_pcc
-            best_validation_pcc_epoch = epoch
+    def train(self, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1):
+        criterion = nn.MSELoss()
+        optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
         
-        print('Epoch: {0:02d} Loss: {1:.6f} Train PCC: {2:.4f} Validation PCC {3:.4f} Time: {4}'.format(
-                                epoch, running_loss / len(train_indices), train_pcc, validation_pcc, time.strftime('%Y-%m-%d %H:%M:%S')))
+        self._init_weights_()
+        
+        best_validation_pcc_epoch = 0
+        best_validation_pcc = 0.0
+        validation_pccs = []
+        train_pccs = []
+        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 20):
+            scheduler.step()
+            running_loss = 0.0
+            random.shuffle(train_indices)
+            for i in train_indices:
+                x, y = dataset[i]
+                optimizer.zero_grad()
+                y_pred = self.forward(x)
+                loss = criterion(y_pred, y)
+                loss.backward()
+                nn.utils.clip_grad_value_(self.parameters(), self.grad_clip)
+                optimizer.step()
+                running_loss += loss.item()
 
+            train_pcc = get_avg_pcc(self, dataset, train_indices)
+            train_pccs.append(train_pcc)
 
-        if model_dir is not None:
-            torch.save(net.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
-
-        if epoch - best_validation_pcc_epoch == patience:
-            break
-
-    return net, train_pccs, validation_pccs
-
-def cross_validation(net, dataset, indices, k, threshold):
-    n = len(indices) // k
-    r = len(indices) - n * k
-    fold_lengths = [n + 1] * r + [n] * (k - r)
-    cumulative_fl = [0]
-    for fl in fold_lengths:
-        cumulative_fl.append(cumulative_fl[-1] + fl)
-    scores = []
-    for i in range(k):
-        print('Cross Validation Fold: {}'.format(i))
-        train_indices = []
-        validation_indices = []
-        for j in range(k):
-            if j == i:
-                validation_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
-            else:
-                train_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
-        net, train_pccs, validation_pccs = train_nn(net, dataset, train_indices, validation_indices) 
-        validation_pcc = max(validation_pccs)
-        scores.append(validation_pcc)
-        if validation_pcc < threshold:
-            break
-    return scores
-
-
-def get_param_config(param_grid, keys):
-    if len(keys) == 0:
-        yield None
-    else:
-        for value in param_grid[keys[0]]:
-            for rest_config in get_param_config(param_grid, keys[1:]):
-                yield keys[0], value, rest_config
-
-def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_funcs):
-    result = []
-    num_of_params = len(param_grid)
-    for param_config in get_param_config(param_grid, list(param_grid.keys())):
-        next_param_config = param_config
-        param_config_dict = dict()
-        while True:
-            key, value, next_param_config = next_param_config
-            param_config_dict[key] = value
-            param_set_funcs[key](net, value)
-            if next_param_config is None:
-                break
+            validation_pcc = get_avg_pcc(self, dataset, validation_indices)
+            validation_pccs.append(validation_pcc)
+            if validation_pcc > best_validation_pcc:
+                best_validation_pcc = validation_pcc
+                best_validation_pcc_epoch = epoch
             
-        print('Running CV for params {}'.format(param_config_dict))
-        scores = cross_validation(net, dataset, indices, k, threshold)
-        mean_score = sum(scores) / len(scores)
-        print('Got score {} for params {}'.format(mean_score, param_config_dict))
-        result.append((param_config_dict, mean_score))
-    return result
+            print('Epoch: {0:02d} Loss: {1:.6f} Train PCC: {2:.4f} Validation PCC {3:.4f} Time: {4}'.format(
+                                    epoch, running_loss / len(train_indices), train_pcc, validation_pcc, time.strftime('%Y-%m-%d %H:%M:%S')))
+
+
+            if model_dir is not None:
+                torch.save(self.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
+
+            if epoch - best_validation_pcc_epoch == patience:
+                break
+
+        return train_pccs, validation_pccs
+
+
+class LSTMNeuralNetwork(RecurrentNeuralNetwork):
+    def __init__(self, input_size, hidden_size=8, output_layer_depth=1,  num_hidden_layers=1, hidden_scale=1.0, ff_scale=0.001, init_lr=1e-3, gamma=0.99, weight_decay=0.1, grad_clip=1.0):
+        super(LSTMNeuralNetwork, self).__init__(input_size, hidden_size, output_layer_depth, num_hidden_layers, hidden_scale, ff_scale, init_lr, gamma, weight_decay, grad_clip)
+
+    def init_layers(self):
+        self.lstm_layer = nn.LSTM(input_size=self.input_size, 
+                                hidden_size=self.hidden_size,
+                                #nonlinearity='relu',
+                                num_layers=self.num_hidden_layers,
+                                batch_first=True, 
+                                bidirectional=True)
+        self.output_layer = FixedWidthFeedForwardNeuralNetwork(self.hidden_size * 2, 1, self.output_layer_depth, leaky_relu)
+        self._init_weights_()
+
+    def _init_weights_(self):
+        ff_init_method = nn.init.normal_
+        hidden_weight_init_method = nn.init.eye_
+        bias_init_method = nn.init.constant_
+        for name, param in self.lstm_layer.named_parameters():
+            if 'weight_hh' in name:
+                hidden_weight_init_method(param)
+                with torch.no_grad():
+                    param.mul_(self.hidden_scale)
+                param.requires_grad_()
+            elif 'weight_ih' in name:
+                ff_init_method(param, std=self.ff_scale)
+            else:
+                bias_init_method(param, 0)
+
+        for name, param in self.output_layer.named_parameters():
+            if 'weight' in name:
+                ff_init_method(param, std=self.ff_scale)
+            else:
+                bias_init_method(param, 0)
+
+    def forward(self, x):
+        out, h = self.lstm_layer(x)
+        out = self.output_layer(out)
+        return out
+
+
 
 if __name__ == '__main__':
 
@@ -362,7 +272,8 @@ if __name__ == '__main__':
             num_hidden_layers=num_hidden_layers,
             output_layer_depth=output_layer_depth,
             hidden_scale=hidden_scale, ff_scale=ff_scale, 
-            init_lr=init_lr, gamma=gamma, weight_decay=weight_decay)
+            init_lr=init_lr, gamma=gamma, 
+            weight_decay=weight_decay, grad_clip=grad_clip)
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
