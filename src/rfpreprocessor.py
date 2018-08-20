@@ -122,7 +122,10 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
 
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
         
-    return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
+    #return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
+
+    return np.array(data).reshape(-1,num_of_columns)
+
 
 
 def ndarray_from_files(files, window_size, local_freq_ws):
@@ -131,7 +134,8 @@ def ndarray_from_files(files, window_size, local_freq_ws):
     num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) + window_size #+ 21*21
     non_zero_elem_per_row = num_of_columns
 
-    X = scsp.csr_matrix((0, num_of_columns))
+    X = np.zeros((0, num_of_columns))
+    print("empty x shape", X.shape)
     for f in files:
         if currently_processing % 100 == 0:
             print('Currently processing: {}'.format(currently_processing))
@@ -144,7 +148,7 @@ def ndarray_from_files(files, window_size, local_freq_ws):
             seq.append(aa_to_index(a))
             b = float(line[1])
             bfactors.append(b)
-        X = scsp.vstack([X, protein_to_features(seq, window_size, local_freq_ws, bfactors)])
+        X = np.vstack((X, protein_to_features(seq, window_size, local_freq_ws, bfactors)))
     
         #bfactors = np.log(np.array(bfactors))
         #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
@@ -187,8 +191,8 @@ if __name__ == '__main__':
     X_test, y_test =  ndarray_from_files(test_files, window_size, local_freq_ws)
 
     # write X
-    scsp.save_npz(sys.argv[5] + '_train', X_train)
-    scsp.save_npz(sys.argv[5] + '_test', X_test)
+    np.savez_compressed(sys.argv[5] + '_train', X=X_train)
+    np.savez_compressed(sys.argv[5] + '_test', X=X_test)
     # write y
     np.savez_compressed(sys.argv[6] + '_train', y=y_train)
     np.savez_compressed(sys.argv[6] + '_test', y=y_test)
