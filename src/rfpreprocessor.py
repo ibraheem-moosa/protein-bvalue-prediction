@@ -57,8 +57,27 @@ def seq_to_markov_probability(seq, freq):
     	        prob[i][j]= prob[i][j] / freq[i]
     return prob
 
-def protein_to_features(seq, ws, local_freq_ws):
-    num_of_columns = 1 + 21 + 21 + (2 * ws + 1) + 21*21
+
+def get_b_factor_window_at_position(seq, pos, window_size):
+    left_padding = max((window_size - pos), 0)
+    #right_padding = max(window_size - (len(seq) - pos - 1), 0)
+    return [-10000] * left_padding + seq[pos-window_size+left_padding:pos] #+ seq[pos:pos+window_size+1-right_padding] + [20] * right_padding
+
+
+def get_b_factor_window_seq(seq, window_size):
+    """
+    Split the b factor sequence into a bunch of windows.
+    :param seq: b factor sequence of real value
+    :param window_size: Number of amino acids to take on each side to form window. 
+                        So actual window size will be 2 * window_size + 1.
+    :returns: A list of 2 * window_size + 1 sized lists. Part of window that are outside of
+                protein sequence are represented by 20.
+    """
+    return [get_b_factor_window_at_position(seq, i, window_size) for i in range(len(seq))]
+
+
+def protein_to_features(seq, ws, local_freq_ws, bfactors):
+    num_of_columns = 1 + 21 + 21 + (2 * ws + 1) + ws #+21*21 
     non_zero_elem_per_row = num_of_columns
     data = []
     indices = []
@@ -67,6 +86,7 @@ def protein_to_features(seq, ws, local_freq_ws):
     local_freqs = seq_to_local_freq(seq, local_freq_ws)
     global_freq = seq_to_freq(seq)
     #global_markov_probability = seq_to_markov_probability(seq, global_freq)
+    bfactor_windows = get_b_factor_window_seq(bfactors, ws)
     
     for i in range(len(seq)):
         # relative position
@@ -81,21 +101,25 @@ def protein_to_features(seq, ws, local_freq_ws):
         for j in range(21):
             data.append(local_freqs[i][j])
             indices.append(1 + 21 + j)
-            
-
-        
-        # amino acids in window in one hot representation
+      
+        # amino acids in window in numerical representation
         for j in range(len(windows[i])):
             data.append(windows[i][j])
             indices.append(1 + 21 + 21 + j)
+           
+        for j in range(len(bfactor_windows[i])):
+            data.append(bfactor_windows[i][j])
+            indices.append( 1 + 21 + 21 + len(windows[i]) + j) 
             
-       
+        
+        '''
         # markov probability
         for j in range(21):
             for k in range(21):
                 data.append(global_markov_probability[j][k])
                 indices.append(1 + 21 + 21 + len(windows[i]) + j*21 + k)
-            
+        '''
+
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
         
     return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
@@ -104,7 +128,7 @@ def protein_to_features(seq, ws, local_freq_ws):
 def ndarray_from_files(files, window_size, local_freq_ws):
     y = []
     currently_processing = 0
-    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) + 21*21
+    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) + window_size #+ 21*21
     non_zero_elem_per_row = num_of_columns
 
     X = scsp.csr_matrix((0, num_of_columns))
@@ -120,7 +144,7 @@ def ndarray_from_files(files, window_size, local_freq_ws):
             seq.append(aa_to_index(a))
             b = float(line[1])
             bfactors.append(b)
-        X = scsp.vstack([X, protein_to_features(seq, window_size, local_freq_ws)])
+        X = scsp.vstack([X, protein_to_features(seq, window_size, local_freq_ws, bfactors)])
     
         #bfactors = np.log(np.array(bfactors))
         #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)

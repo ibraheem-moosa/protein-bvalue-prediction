@@ -50,15 +50,15 @@ else:
 # data input and preprocessing done
 
 
-NUMBER_OF_LINEAR_REGRESSOR = 500
+NUMBER_OF_LINEAR_REGRESSOR = 5
 
 def train(X_train, y_train):
 	clf = [LinearRegression() for i in range(NUMBER_OF_LINEAR_REGRESSOR)]
-	finalClassifier = RandomForestRegressor(bootstrap=True, criterion='mse', max_depth=5,
+	finalClassifier = RandomForestRegressor(bootstrap=True, criterion='mse', max_depth=7,
            max_features='sqrt', max_leaf_nodes=None,
            min_impurity_decrease=0.0, min_impurity_split=None,
            min_samples_leaf=1, min_samples_split=2,
-           min_weight_fraction_leaf=0.0, n_estimators=500, n_jobs=4,
+           min_weight_fraction_leaf=0.0, n_estimators=50, n_jobs=4,
            oob_score=False, random_state=None, verbose=10, warm_start=False)
 
 
@@ -128,13 +128,13 @@ clf = MLPRegressor(hidden_layer_sizes=(768,128,64,32,16,16,8), activation='relu'
 '''
 
 
-clf = RandomForestRegressor(n_estimators=5000, n_jobs=4, verbose=10, max_depth=7, max_features='sqrt')
+clf = RandomForestRegressor(n_estimators=200, n_jobs=4, verbose=10, max_depth=4, max_features='sqrt')
 
 #clf, final_clf = train(X_train, y_train)
 
 
 #clf = Ridge(alpha=0.5, copy_X=True, fit_intercept=True, max_iter=1000,
-#   normalize=False, random_state=None, solver='auto', tol=1e-5)
+# normalize=False, random_state=None, solver='auto', tol=1e-5)
 
 
 '''clf = GradientBoostingRegressor(alpha=0.9, criterion='friedman_mse', init=None,
