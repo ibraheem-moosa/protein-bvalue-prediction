@@ -112,9 +112,13 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.init_layers()
 
-    def train(self, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1):
+    def train(self, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1, warm_start_model_params=None):
         criterion = nn.MSELoss()
         optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
+        if warm_start_model_params is not None:
+            self.load_state_dict(warm_start_model_params['state_dict'])
+            optimizer.load_state_dict(warm_start_model_params['optimizer'])
+
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
         
         self._init_weights_()
@@ -123,7 +127,7 @@ class RecurrentNeuralNetwork(nn.Module):
         best_validation_pcc = 0.0
         validation_pccs = []
         train_pccs = []
-        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 20):
+        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 1000):
             scheduler.step()
             running_loss = 0.0
             random.shuffle(train_indices)
@@ -151,9 +155,12 @@ class RecurrentNeuralNetwork(nn.Module):
 
 
             if model_dir is not None:
-                torch.save(self.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
+                state = {
+                        'state_dict' : self.state_dict(),
+                        'optimizer' : optimizer.state_dict()}
+                torch.save(state, os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
 
-            if epoch - best_validation_pcc_epoch == patience:
+            if False and epoch - best_validation_pcc_epoch == patience:
                 break
 
         return train_pccs, validation_pccs
@@ -174,8 +181,9 @@ class LSTMNeuralNetwork(RecurrentNeuralNetwork):
         self._init_weights_()
 
     def _init_weights_(self):
-        ff_init_method = nn.init.normal_
-        hidden_weight_init_method = nn.init.eye_
+        #return
+        ff_init_method = nn.init.xavier_normal_
+        hidden_weight_init_method = nn.init.orthogonal_
         bias_init_method = nn.init.constant_
         for name, param in self.lstm_layer.named_parameters():
             if 'weight_hh' in name:
@@ -184,13 +192,13 @@ class LSTMNeuralNetwork(RecurrentNeuralNetwork):
                     param.mul_(self.hidden_scale)
                 param.requires_grad_()
             elif 'weight_ih' in name:
-                ff_init_method(param, std=self.ff_scale)
+                ff_init_method(param)
             else:
                 bias_init_method(param, 0)
 
         for name, param in self.output_layer.named_parameters():
             if 'weight' in name:
-                ff_init_method(param, std=self.ff_scale)
+                ff_init_method(param)
             else:
                 bias_init_method(param, 0)
 

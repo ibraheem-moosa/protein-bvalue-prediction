@@ -48,8 +48,9 @@ if __name__ == '__main__':
     print(time.strftime('%Y-%m-%d %H:%M'))
     
     indices = list(range(len(dataset)))
+    random.seed(42)
     random.shuffle(indices)
-    indices = indices[:300]
+    #indices = indices[:100]
     train_indices = indices[:int(0.8 * len(indices))]
     validation_indices = indices[int(0.8 * len(indices)):]
 
@@ -61,11 +62,11 @@ if __name__ == '__main__':
         warm_start_last_epoch = -1
 
     batch_size = 1
-    init_lr = 1.0 / 128
+    init_lr = 2.0 ** -7
     momentum = 0.9
-    weight_decay = 1e-3
+    weight_decay = 1e-4
     gamma = 0.9
-    hidden_size = 8
+    hidden_size = 16
     hidden_scale = 1.0
     num_hidden_layers = 1
     output_layer_depth = 2
@@ -92,15 +93,15 @@ if __name__ == '__main__':
             output_layer_depth=output_layer_depth,
             hidden_scale=hidden_scale, ff_scale=ff_scale, 
             init_lr=init_lr, gamma=gamma, weight_decay=weight_decay)
-    if warm_start_model_params != None:
-        net.load_state_dict(warm_start_model_params)
-
+    
+    net.train(dataset, train_indices, validation_indices, patience=20, model_dir=sys.argv[3], warm_start_last_epoch=warm_start_last_epoch,
+            warm_start_model_params=warm_start_model_params)
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
-    
-    param_grid = {'init_lr' : 2.0 ** np.arange(-10,-9), 'hidden_size' : [2,4,8],
-                    'weight_decay' : 10.0 ** np.arange(-1,-0), 'gamma' : [0.9],
+    '''
+    param_grid = {'init_lr' : 2.0 ** np.arange(-7, -6), 'hidden_size' : [4,8,16],
+                    'weight_decay' : 10.0 ** np.arange(-4,-3), 'gamma' : [0.9],
                     'output_layer_depth' : [2],
                     'num_hidden_layers' : [1]}
     def set_init_lr(net, value):
@@ -127,3 +128,4 @@ if __name__ == '__main__':
             print('{}:{}'.format(param_name, param_value), end=' ')
         print('score: {0:.4f}'.format(results[i][1]))
     #print(results)
+    '''
