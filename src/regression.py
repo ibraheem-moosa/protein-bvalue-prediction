@@ -27,17 +27,6 @@ print(X_test.shape)
 y_train = load(sys.argv[2])['y']
 y_test = load(sys.argv[4])['y']
 
-'''
-y_train = np.log(y_train)
-y_test = np.log(y_test)
-
-print(np.count_nonzero(np.isnan(y_train)))
-print(np.count_nonzero(np.isnan(y_test)))
-y_train[np.isnan(y_train)] = 0
-y_test[np.isnan(y_test)] = 0
-y_train[np.isinf(y_train)] = 0
-y_test[np.isinf(y_test)] = 0
-'''
 #y_train = (y_train - y_train.mean()) / y_train.std()
 #y_test = (y_test - y_test.mean()) / y_test.std()
 print(y_train.shape)
@@ -53,17 +42,22 @@ print("sliding window size:", SLIDING_WINDOW_SIZE)
 
 def test(clf, X_test):
     y_pred = []
-    y = []
+    ys = []
+    count = 0
     for x in X_test:
         if(x[-1] < -1000):
-            print(x)
-            y = []
-        if(len(y) >= SLIDING_WINDOW_SIZE):
-    	    x[-SLIDING_WINDOW_SIZE:-1] = y[-SLIDING_WINDOW_SIZE:-1]
-        elif(len(y) > 0):
-    	    x[-len(y):-1] = y
-        y += clf.predict([x])
-    y_pred.append(y)
+            count += 1
+            ys = []
+        if(len(ys) >= SLIDING_WINDOW_SIZE):
+    	    x[-SLIDING_WINDOW_SIZE:-1] = ys[-SLIDING_WINDOW_SIZE:-1]
+        elif(len(ys) > 0):
+    	    x[-len(ys)-1:-1] = ys
+        y = clf.predict([x])
+        y_pred.append(y[0])
+        ys.append(y[0])
+        #print(ys)
+    
+    print("tested {} samples".format(count))
     
     return y_pred
 
