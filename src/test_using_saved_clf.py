@@ -3,8 +3,8 @@ import time
 import gc
 
 if len(sys.argv) < 3:
-    print('Usage: python3 regression.py X_train y_train X_test y_test [seed]')
-    print('Example: python3 regression.py X_9_18.npz y_9_18.npz 10')
+    print('Usage: python3 test_using_saved_clf.py clf_file X_test y_test')
+    print('Example: python3 regression.py clf.pkl X_test_9_18.npz y_test_9_18.npz')
     exit()
 print(time.strftime('%Y-%m-%d %H:%M'))
 
@@ -17,25 +17,16 @@ from numpy import load
 from sklearn.ensemble import BaggingRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.externals import joblib
 
-
-X_train = load(sys.argv[1])['X']
-X_test = load(sys.argv[3])['X'][0:4000]
-print(X_train.shape)
+classifier_file = sys.argv[1]
+X_test = load(sys.argv[2])['X'][0:4000]
 print(X_test.shape)
 
-y_train = load(sys.argv[2])['y']
-y_test = load(sys.argv[4])['y'][0:4000]
+y_test = load(sys.argv[3])['y'][0:4000]
 
-#y_train = (y_train - y_train.mean()) / y_train.std()
 #y_test = (y_test - y_test.mean()) / y_test.std()
-print(y_train.shape)
 print(y_test.shape)
-
-if len(sys.argv) == 6:
-    seed = int(sys.argv[5])
-else:
-    seed = None
 
 SLIDING_WINDOW_SIZE = (X_test.shape[1]- 1 - 1 - 21 - 21)//3; # must match the equation in rfpreprocessor.py
 print("sliding window size:", SLIDING_WINDOW_SIZE)
@@ -50,7 +41,7 @@ def test(clf, X_test):
             ys = []
             print("testing sample {}".format(count))
         if(len(ys) >= SLIDING_WINDOW_SIZE):
-    	    x[-SLIDING_WINDOW_SIZE:-1] = ys[-SLIDING_WINDOW_SIZE:-1]
+    	    x[-SLIDING_WINDOW_SIZE:-1] = ys[-SLIDING_WINDOW_SIZE:-1] # replacing with predicted value
         elif(len(ys) > 0):
     	    x[-len(ys)-1:-1] = ys
         y = clf.predict([x])
@@ -62,12 +53,10 @@ def test(clf, X_test):
     return y_pred
 
 
-clf = RandomForestRegressor(n_estimators=400, n_jobs=4, verbose=0, max_depth=4, max_features='sqrt')
-print(clf)
+clf = joblib.load(classifier_file)
 
-clf.fit(X_train, y_train)
-gc.collect()
-print("training done.........................")
+
+print("classifier loaded.........................")
 
 y_test_pred = test(clf, X_test) #clf.predict(X_test)
 #y_train_pred = test(clf, X_train) #clf.predict(X_train)
@@ -99,12 +88,5 @@ print('Test Error: {}'.format(mean_squared_error(y_test, y_test_pred) / 2.0))
 print('Test Data Mean: {} Standard Deviation: {}'.format(np.mean(y_test), np.std(y_test)))
 print('Test Predicted Mean: {} Standard Deviation: {}'.format(np.mean(y_test_pred), np.std(y_test_pred)))
 
-will_save = input('Do you want to save this classifier? [y/N]')
 
-if 'y' in will_save:
-    fname = input('Name of classifier')
-    if len(fname) == 0:
-        fname = 'classifier-' + time.strftime('%Y-%m-%d %H:%M')
-    from sklearn.externals import joblib
-    joblib.dump(clf, fname + '.pkl', compress=9)
-
+print(time.strftime('%Y-%m-%d %H:%M'))
