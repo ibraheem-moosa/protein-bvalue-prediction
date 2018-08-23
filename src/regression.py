@@ -70,23 +70,18 @@ def test(clf, X_test, y_test):
     return y_pred, y_preds, y_trues
 
 
-clf = RandomForestRegressor(n_estimators=100, n_jobs=4, verbose=5, max_depth=4, max_features='sqrt', random_state=seed)
+clf = RandomForestRegressor(n_estimators=250, n_jobs=4, verbose=5, max_depth=4, max_features='sqrt', random_state=seed)
 print(clf)
 
 clf.fit(X_train, y_train)
-gc.collect()
 print("training done.........................")
+
 clf.verbose = 0
 clf.n_jobs = 1
+
 y_test_pred, y_test_preds, y_test_trues = test(clf, X_test, y_test) #clf.predict(X_test)
 #y_train_pred = test(clf, X_train) #clf.predict(X_train)
-gc.collect()
-
-length = len(y_test)
-
 print("testing done...................")
-
-#gc.collect()
 
 from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr
