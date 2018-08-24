@@ -77,7 +77,8 @@ def get_b_factor_window_seq(seq, window_size):
 
 
 def protein_to_features(seq, ws, local_freq_ws, bfactors):
-    num_of_columns = (2 * ws + 1) + ws #+21*21 
+    #num_of_columns = (2 * ws + 1) + ws #+21*21 
+    num_of_columns = (2 * ws + 1) * 21 + ws #+21*21 
     non_zero_elem_per_row = (2 * ws + 1) + ws
     data = []
     indices = []
@@ -105,15 +106,15 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
         '''
         # amino acids in window in numerical representation
         for j in range(len(windows[i])):
-            data.append(windows[i][j])
-            #data.append(1)
-            indices.append(j)
-            #indices.append(j * 21 + windows[i][j])
+            #data.append(windows[i][j])
+            data.append(1)
+            #indices.append(j)
+            indices.append(j * 21 + windows[i][j])
         
         for j in range(len(bfactor_windows[i])):
             data.append(bfactor_windows[i][j])
-            indices.append(len(windows[i]) + j) 
-            #indices.append(21* len(windows[i]) + j) 
+            #indices.append(len(windows[i]) + j) 
+            indices.append(21* len(windows[i]) + j) 
             
         
         '''
@@ -126,16 +127,17 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
 
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
         
-    #return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns)).todense()
+    return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns)).todense()
 
-    return np.array(data).reshape(-1,num_of_columns)
+    #return np.array(data).reshape(-1,num_of_columns)
 
 
 
-def ndarray_from_files(files, window_size, local_freq_ws):
+def ndarray_from_files(files, window_size, local_freq_ws, reverse=False):
     y = []
     currently_processing = 0
-    num_of_columns = (2 * window_size + 1) + window_size #+ 21*21
+    #num_of_columns = (2 * window_size + 1) + window_size #+ 21*21
+    num_of_columns = (2 * window_size + 1) * 21 + window_size #+ 21*21
     non_zero_elem_per_row = num_of_columns
 
     X = np.zeros((0, num_of_columns))
@@ -152,6 +154,9 @@ def ndarray_from_files(files, window_size, local_freq_ws):
             seq.append(aa_to_index(a))
             b = float(line[1])
             bfactors.append(b)
+        if reverse:
+            seq.reverse()
+            bfactors.reverse()
         X = np.vstack((X, protein_to_features(seq, window_size, local_freq_ws, bfactors)))
     
         #bfactors = np.log(np.array(bfactors))
@@ -190,12 +195,19 @@ if __name__ == '__main__':
     window_size = int(sys.argv[3])
     local_freq_ws = int(sys.argv[4])
 
-    X_train, y_train = ndarray_from_files(train_files, window_size, local_freq_ws)
-    X_test, y_test =  ndarray_from_files(test_files, window_size, local_freq_ws)
+    X_train_left, y_train_left = ndarray_from_files(train_files, window_size, local_freq_ws, reverse=False)
+    X_train_right, y_train_right = ndarray_from_files(train_files, window_size, local_freq_ws, reverse=True)
+    X_test_left, y_test_left =  ndarray_from_files(test_files, window_size, local_freq_ws, reverse=False)
+    X_test_right, y_test_right =  ndarray_from_files(test_files, window_size, local_freq_ws, reverse=True)
 
     # write X
-    np.savez_compressed(sys.argv[5] + '_train', X=X_train)
-    np.savez_compressed(sys.argv[5] + '_test', X=X_test)
+    np.savez_compressed(sys.argv[5] + '_train_left', X=X_train_left)
+    np.savez_compressed(sys.argv[5] + '_train_right', X=X_train_right)
+    np.savez_compressed(sys.argv[5] + '_test_left', X=X_test_left)
+    np.savez_compressed(sys.argv[5] + '_test_right', X=X_test_right)
     # write y
-    np.savez_compressed(sys.argv[6] + '_train', y=y_train)
-    np.savez_compressed(sys.argv[6] + '_test', y=y_test)
+    np.savez_compressed(sys.argv[6] + '_train_left', y=y_train_left)
+    np.savez_compressed(sys.argv[6] + '_train_right', y=y_train_right)
+    np.savez_compressed(sys.argv[6] + '_test_left', y=y_test_left)
+    np.savez_compressed(sys.argv[6] + '_test_right', y=y_test_right)
+
