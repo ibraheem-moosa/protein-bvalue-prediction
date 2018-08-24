@@ -17,7 +17,8 @@ from numpy import load
 from sklearn.ensemble import BaggingRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import GradientBoostingRegressor
-
+import matplotlib.pyplot as plt
+import random
 
 X_train = load(sys.argv[1])['X']
 X_test = load(sys.argv[3])['X']
@@ -40,6 +41,13 @@ else:
 SLIDING_WINDOW_SIZE = (X_test.shape[1]- 1)//43; # must match the equation in rfpreprocessor.py
 print("sliding window size:", SLIDING_WINDOW_SIZE)
 
+def plot_true_and_prediction(y_true, y_pred):
+    fig = plt.figure()
+    plt.title('True Green, Predicted Yellow')
+    plt.plot(y_pred, 'y-')
+    plt.plot(y_true, 'g-')
+    plt.show()
+
 def test(clf, X_test, y_test):
     y_pred = []
     y_preds = []
@@ -53,6 +61,8 @@ def test(clf, X_test, y_test):
             if len(ys) > 0:
                 y_preds.append(ys)
                 y_trues.append(y_true)
+                if random.random() < 0.01:
+                    plot_true_and_prediction(y_true, ys)
             ys = []
             y_true = []
             print("testing sample {}".format(count))
@@ -73,7 +83,7 @@ def test(clf, X_test, y_test):
 #clf = RandomForestRegressor(n_estimators=250, n_jobs=4, verbose=5, max_depth=4, max_features='sqrt', random_state=seed)
 #clf = LinearRegression(n_jobs=4) #really bad around 0.3 interestingly conc is lower
 #clf = GradientBoostingRegressor(verbose=5)
-clf = MLPRegressor(hidden_layer_sizes=(1000,), verbose=5)
+clf = MLPRegressor(hidden_layer_sizes=(100,), verbose=5)
 print(clf)
 
 clf.fit(X_train, y_train)
