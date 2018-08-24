@@ -70,7 +70,9 @@ def test(clf, X_test, y_test):
     return y_pred, y_preds, y_trues
 
 
-clf = RandomForestRegressor(n_estimators=250, n_jobs=4, verbose=5, max_depth=4, max_features='sqrt', random_state=seed)
+#clf = RandomForestRegressor(n_estimators=250, n_jobs=4, verbose=5, max_depth=4, max_features='sqrt', random_state=seed)
+#clf = LinearRegression(n_jobs=4) #really bad around 0.3 interestingly conc is lower
+clf = GradientBoostingRegressor(verbose=5)
 print(clf)
 
 clf.fit(X_train, y_train)
