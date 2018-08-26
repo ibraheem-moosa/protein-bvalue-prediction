@@ -46,9 +46,9 @@ def test(clf, X_test, y_test, plot_reversed=False):
             if count % 100 == 0:
                 print("testing sample {}".format(count))
         if(len(ys) >= SLIDING_WINDOW_SIZE):
-    	    x[-SLIDING_WINDOW_SIZE:-1] = ys[-SLIDING_WINDOW_SIZE:-1]
+    	    x[-SLIDING_WINDOW_SIZE:] = ys[-SLIDING_WINDOW_SIZE:]
         elif(len(ys) > 0):
-    	    x[-len(ys)-1:-1] = ys
+    	    x[-len(ys):] = ys
         y_true.append(y)
         y = clf.predict([x])[0]
         y_pred.append(y)
@@ -120,8 +120,8 @@ print("sliding window size:", SLIDING_WINDOW_SIZE)
 
 #clf = RandomForestRegressor(n_estimators=250, n_jobs=4, verbose=5, max_depth=4, max_features='sqrt', random_state=seed)
 #clf = LinearRegression(n_jobs=4) #really bad around 0.3 interestingly conc is lower
-clf_left = GradientBoostingRegressor(n_estimators=250, verbose=5, random_state=seed, max_depth=5, learning_rate=0.1)
-clf_right = GradientBoostingRegressor(n_estimators=250, verbose=5, random_state=seed, max_depth=5, learning_rate=0.1)
+clf_left = GradientBoostingRegressor(n_estimators=250, verbose=5, random_state=seed, max_depth=3, learning_rate=0.1)
+clf_right = GradientBoostingRegressor(n_estimators=250, verbose=5, random_state=seed, max_depth=3, learning_rate=0.1)
 #clf_left = MLPRegressor(hidden_layer_sizes=(100,), verbose=5)
 #clf_right = MLPRegressor(hidden_layer_sizes=(100,), verbose=5)
 print(clf_left)
@@ -142,7 +142,7 @@ X, y = ndarrays_from_left_right(y_train_left_preds, y_train_right_preds, y_train
 #clf = LinearRegression(n_jobs=4) 
 #clf = RidgeCV()
 #clf = MLPRegressor(hidden_layer_sizes=(10,), verbose=5)
-clf = GradientBoostingRegressor(verbose=5, n_estimators=100, random_state=seed)
+clf = GradientBoostingRegressor(verbose=5, n_estimators=500, random_state=seed, learning_rate=0.2)
 clf.fit(X, y)
 clf.verbose=0
 print("second stage training done.........................")
