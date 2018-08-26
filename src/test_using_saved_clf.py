@@ -20,10 +20,10 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.externals import joblib
 
 classifier_file = sys.argv[1]
-X_test = load(sys.argv[2])['X'][0:4000]
+X_test = load(sys.argv[2])['X']
 print(X_test.shape)
 
-y_test = load(sys.argv[3])['y'][0:4000]
+y_test = load(sys.argv[3])['y']
 
 #y_test = (y_test - y_test.mean()) / y_test.std()
 print(y_test.shape)
@@ -41,9 +41,9 @@ def test(clf, X_test):
             ys = []
             print("testing sample {}".format(count))
         if(len(ys) >= SLIDING_WINDOW_SIZE):
-    	    x[-SLIDING_WINDOW_SIZE:-1] = ys[-SLIDING_WINDOW_SIZE:-1] # replacing with predicted value
+    	    x[-SLIDING_WINDOW_SIZE:] = ys[-SLIDING_WINDOW_SIZE:] # replacing with predicted value
         elif(len(ys) > 0):
-    	    x[-len(ys)-1:-1] = ys
+    	    x[-len(ys):] = ys
         y = clf.predict([x])
         y_pred.append(y[0])
         ys.append(y[0])
@@ -55,6 +55,7 @@ def test(clf, X_test):
 
 clf = joblib.load(classifier_file)
 
+clf.n_jobs = 1
 
 print("classifier loaded.........................")
 

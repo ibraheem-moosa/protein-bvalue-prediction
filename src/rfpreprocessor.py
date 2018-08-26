@@ -179,20 +179,23 @@ if __name__ == '__main__':
     if num_of_proteins < len(files):
         files = random.sample(files, num_of_proteins)
 
-    num_of_train = int(0.9 * len(files))
+    num_of_train = int(0.4 * len(files))
     train_files = files[:num_of_train]
-    test_files = files[num_of_train:]
-
+    val_files = files[num_of_train:2*num_of_train]
+    test_files = files[2*num_of_train:]
 
     window_size = int(sys.argv[3])
     local_freq_ws = int(sys.argv[4])
 
     X_train, y_train = ndarray_from_files(train_files, window_size, local_freq_ws)
+    X_val, y_val = ndarray_from_files(val_files, window_size, local_freq_ws)
     X_test, y_test =  ndarray_from_files(test_files, window_size, local_freq_ws)
 
     # write X
     np.savez_compressed(sys.argv[5] + '_train', X=X_train)
+    np.savez_compressed(sys.argv[5] + '_val', X=X_val)
     np.savez_compressed(sys.argv[5] + '_test', X=X_test)
     # write y
     np.savez_compressed(sys.argv[6] + '_train', y=y_train)
+    np.savez_compressed(sys.argv[6] + '_val', y=y_val)
     np.savez_compressed(sys.argv[6] + '_test', y=y_test)
