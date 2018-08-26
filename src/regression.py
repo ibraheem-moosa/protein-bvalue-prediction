@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import random
 from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr
-
+from rfpreprocessor import seq_to_windows
 
 
 def plot_true_and_prediction(y_true, y_pred):
@@ -58,14 +58,17 @@ def test(clf, X_test, y_test, plot_reversed=False):
     
     return y_pred, y_preds, y_trues
 
-def ndarrays_from_left_right(y_lefts, y_rights, y_trues, ws=1):
+def ndarrays_from_left_right(y_lefts, y_rights, y_trues, ws=0):
     total_length = sum(map(len, y_trues))
-    X = np.zeros((total_length, 2))
+    X = np.zeros((total_length, 2 * (2 * ws + 1)))
     y = np.zeros((total_length,))
     current_pos = 0
     for y_l, y_r in zip(y_lefts, y_rights):
+        y_r = list(reversed(y_r))
+        y_l = seq_to_windows(y_l, ws, padding_value=-10000)
+        y_r = seq_to_windows(y_r, ws, padding_value=-10000)
         for l, r in zip(y_l, y_r):
-            X[current_pos] = [l, r]
+            X[current_pos] = l + r
             current_pos += 1
     current_pos = 0
     for y_t in y_trues:
@@ -82,8 +85,8 @@ print(time.strftime('%Y-%m-%d %H:%M'))
 
 
 X_train_left = load(sys.argv[1] + '_left.npz')['X']
-X_train_right = load(sys.argv[1] + '_right.npz')['X']
 X_test_left = load(sys.argv[3] + '_left.npz')['X']
+X_train_right = load(sys.argv[1] + '_right.npz')['X']
 X_test_right = load(sys.argv[3] + '_right.npz')['X']
 print(X_train_left.shape)
 print(X_train_right.shape)
@@ -91,8 +94,8 @@ print(X_test_left.shape)
 print(X_test_right.shape)
 
 y_train_left = load(sys.argv[2] + '_left.npz')['y']
-y_train_right = load(sys.argv[2] + '_right.npz')['y']
 y_test_left = load(sys.argv[4] + '_left.npz')['y']
+y_train_right = load(sys.argv[2] + '_right.npz')['y']
 y_test_right = load(sys.argv[4] + '_right.npz')['y']
 
 y_test = y_test_left
@@ -109,17 +112,18 @@ if len(sys.argv) == 6:
 else:
     seed = None
 
-SLIDING_WINDOW_SIZE = (X_test_left.shape[1]- 1)//43; # must match the equation in rfpreprocessor.py
-#SLIDING_WINDOW_SIZE = (X_test_left.shape[1]- 1)//3; # must match the equation in rfpreprocessor.py
+#ohtonum
+#SLIDING_WINDOW_SIZE = (X_test_left.shape[1]- 1)//43; # must match the equation in rfpreprocessor.py
+SLIDING_WINDOW_SIZE = (X_test_left.shape[1]- 1)//3; # must match the equation in rfpreprocessor.py
 print("sliding window size:", SLIDING_WINDOW_SIZE)
 
 
 #clf = RandomForestRegressor(n_estimators=250, n_jobs=4, verbose=5, max_depth=4, max_features='sqrt', random_state=seed)
 #clf = LinearRegression(n_jobs=4) #really bad around 0.3 interestingly conc is lower
-#clf_left = GradientBoostingRegressor(n_estimators=1500, verbose=5)
-#clf_right = GradientBoostingRegressor(n_estimators=1500, verbose=5)
-clf_left = MLPRegressor(hidden_layer_sizes=(10,), verbose=5)
-clf_right = MLPRegressor(hidden_layer_sizes=(10,), verbose=5)
+clf_left = GradientBoostingRegressor(n_estimators=250, verbose=5, random_state=seed, max_depth=5, learning_rate=0.1)
+clf_right = GradientBoostingRegressor(n_estimators=250, verbose=5, random_state=seed, max_depth=5, learning_rate=0.1)
+#clf_left = MLPRegressor(hidden_layer_sizes=(100,), verbose=5)
+#clf_right = MLPRegressor(hidden_layer_sizes=(100,), verbose=5)
 print(clf_left)
 
 clf_left.fit(X_train_left, y_train_left)
@@ -134,12 +138,12 @@ clf_right.n_jobs = 1
 y_train_left_pred, y_train_left_preds, y_train_left_trues = test(clf_left, X_train_left, y_train_left) #clf.predict(X_test)
 y_train_right_pred, y_train_right_preds, y_train_right_trues = test(clf_right, X_train_right, y_train_right, plot_reversed=True)
 
-X, y = ndarrays_from_left_right(y_train_left_preds, y_train_right_preds, y_train_left_trues)
+X, y = ndarrays_from_left_right(y_train_left_preds, y_train_right_preds, y_train_left_trues, ws=SLIDING_WINDOW_SIZE)
 #clf = LinearRegression(n_jobs=4) 
 #clf = RidgeCV()
-clf = MLPRegressor(hidden_layer_sizes=(4,), verbose=5)
+#clf = MLPRegressor(hidden_layer_sizes=(10,), verbose=5)
+clf = GradientBoostingRegressor(verbose=5, n_estimators=100, random_state=seed)
 clf.fit(X, y)
-print(clf.coefs_)
 clf.verbose=0
 print("second stage training done.........................")
 
@@ -148,9 +152,16 @@ y_test_right_pred, y_test_right_preds, y_test_right_trues = test(clf_right, X_te
 
 y_test_preds_clf = []
 y_test_preds_avg = []
+ 
 for y_l, y_r in zip(y_test_left_preds, y_test_right_preds):
-    y_test_preds_clf.append(clf.predict(np.stack((np.array(y_l), np.array(list(reversed(y_r)))), axis=-1)))
-    y_test_preds_avg.append(0.5 * (np.array(y_l) + np.array(list(reversed(y_r)))))
+    y_r = list(reversed(y_r))
+    y_test_preds_avg.append(0.5 * (np.array(y_l) + np.array(y_r)))
+    y_l = seq_to_windows(y_l, SLIDING_WINDOW_SIZE, padding_value=-10000)
+    y_r = seq_to_windows(y_r, SLIDING_WINDOW_SIZE, padding_value=-10000)
+    clf_pred = []
+    for l, r in zip(y_l, y_r):
+        clf_pred.append(clf.predict([l + r])[0])
+    y_test_preds_clf.append(clf_pred)
 
 y_test_trues = []
 for y_l, y_r in zip(y_test_left_trues, y_test_right_trues):

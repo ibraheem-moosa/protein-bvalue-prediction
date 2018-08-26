@@ -14,12 +14,12 @@ def aa_to_index(aa):
     else:
         return 20
 
-def get_window_at_pos(seq, pos, window_size):
+def get_window_at_pos(seq, pos, window_size, padding_value=20):
     left_padding = max((window_size - pos), 0)
     right_padding = max(window_size - (len(seq) - pos - 1), 0)
-    return [20] * left_padding + seq[pos-window_size+left_padding:pos] + seq[pos:pos+window_size+1-right_padding] + [20] * right_padding
+    return [padding_value] * left_padding + seq[pos-window_size+left_padding:pos] + seq[pos:pos+window_size+1-right_padding] + [padding_value] * right_padding
 
-def seq_to_windows(seq, window_size):
+def seq_to_windows(seq, window_size, padding_value=20):
     """
     Split the protein sequence into a bunch of windows.
     :param seq: Protein sequence where each amino acid is represeented by integer index.
@@ -28,7 +28,7 @@ def seq_to_windows(seq, window_size):
     :returns: A list of 2 * window_size + 1 sized lists. Part of window that are outside of
                 protein sequence are represented by 20.
     """
-    return [get_window_at_pos(seq, i, window_size) for i in range(len(seq))]
+    return [get_window_at_pos(seq, i, window_size, padding_value) for i in range(len(seq))]
 
 def seq_to_freq(seq):
     freq = [0.0] * 21
@@ -77,6 +77,7 @@ def get_b_factor_window_seq(seq, window_size):
 
 
 def protein_to_features(seq, ws, local_freq_ws, bfactors):
+    #ohtonum
     #num_of_columns = (2 * ws + 1) + ws #+21*21 
     num_of_columns = (2 * ws + 1) * 21 + ws #+21*21 
     non_zero_elem_per_row = (2 * ws + 1) + ws
@@ -106,13 +107,16 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
         '''
         # amino acids in window in numerical representation
         for j in range(len(windows[i])):
+            #ohtonum
             #data.append(windows[i][j])
             data.append(1)
+            #ohtonum
             #indices.append(j)
             indices.append(j * 21 + windows[i][j])
         
         for j in range(len(bfactor_windows[i])):
             data.append(bfactor_windows[i][j])
+            #ohtonum
             #indices.append(len(windows[i]) + j) 
             indices.append(21* len(windows[i]) + j) 
             
@@ -126,9 +130,8 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
         '''
 
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
-        
+    #ohtonum    
     return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns)).todense()
-
     #return np.array(data).reshape(-1,num_of_columns)
 
 
@@ -136,6 +139,7 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
 def ndarray_from_files(files, window_size, local_freq_ws, reverse=False):
     y = []
     currently_processing = 0
+    #ohtonum
     #num_of_columns = (2 * window_size + 1) + window_size #+ 21*21
     num_of_columns = (2 * window_size + 1) * 21 + window_size #+ 21*21
     non_zero_elem_per_row = num_of_columns
