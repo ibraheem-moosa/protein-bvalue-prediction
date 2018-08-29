@@ -47,6 +47,7 @@ def get_avg_pcc(net, dataset, indices):
     for i in indices:
         x, y = dataset[i]
         y_pred = net.predict(x)
+        y, y_pred = y.cpu(), y_pred.cpu()
         for j in range(x.shape[0]):
             pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
 

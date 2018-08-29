@@ -113,6 +113,7 @@ class RecurrentNeuralNetwork(nn.Module):
         self.init_layers()
 
     def train(self, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1, warm_start_model_params=None):
+        self.cuda()
         criterion = nn.MSELoss()
         optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
         if warm_start_model_params is not None:
