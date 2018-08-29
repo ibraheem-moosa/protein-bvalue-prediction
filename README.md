@@ -8,7 +8,7 @@ Then run
 
     python3 torch_lstm.py path/to/rnn_inputs protein_list.txt path/to/rnn/dir
     
-Here the third parameter is aa directory where the RNNs will be saved at each epoch.
+Here the third parameter is a directory where the RNNs will be saved at each epoch.
 
 
 # dependencies
@@ -16,7 +16,7 @@ Here the third parameter is aa directory where the RNNs will be saved at each ep
 - Scipy
 - scikit-learn
 - matplotlib
-- Biopython (If you have to generate the inputs, hopefully you wont. Th downloaded files should work.)
+- Biopython (If you have to generate the inputs, hopefully you wont. The downloaded files should work.)
 
 # generating the rnn inputs
 
