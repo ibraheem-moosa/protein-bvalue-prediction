@@ -51,8 +51,9 @@ if __name__ == '__main__':
     random.seed(42)
     random.shuffle(indices)
     #indices = indices[:100]
-    train_indices = indices[:int(0.8 * len(indices))]
-    validation_indices = indices[int(0.8 * len(indices)):]
+    train_indices = indices[:int(0.6 * len(indices))]
+    validation_indices = indices[int(0.6 * len(indices)):int(0.8 * len(indices))]
+    test_indices = indices[int(0.8 * len(indices)):]
 
     if len(sys.argv) == 6:
         warm_start_model_params = torch.load(sys.argv[4])
@@ -94,8 +95,12 @@ if __name__ == '__main__':
             hidden_scale=hidden_scale, ff_scale=ff_scale, 
             init_lr=init_lr, gamma=gamma, weight_decay=weight_decay)
     
-    net.train(dataset, train_indices, validation_indices, patience=20, model_dir=sys.argv[3], warm_start_last_epoch=warm_start_last_epoch,
+    net.train(dataset, train_indices, validation_indices, max_iter=150, patience=10, model_dir=sys.argv[3], warm_start_last_epoch=warm_start_last_epoch,
             warm_start_model_params=warm_start_model_params)
+
+    print('Training done')
+    test_pcc = get_avg_pcc(net, dataset, test_indices)
+    print('Test PCC: {}'.format(test_pcc))
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)

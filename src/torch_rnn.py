@@ -112,7 +112,7 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.init_layers()
 
-    def train(self, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1, warm_start_model_params=None):
+    def train(self, dataset, train_indices, validation_indices, model_dir=None, max_iter=100, patience=5, warm_start_last_epoch=-1, warm_start_model_params=None):
         self.cuda()
         criterion = nn.MSELoss()
         optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
@@ -128,7 +128,7 @@ class RecurrentNeuralNetwork(nn.Module):
         best_validation_pcc = 0.0
         validation_pccs = []
         train_pccs = []
-        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 1000):
+        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + max_iter):
             scheduler.step()
             running_loss = 0.0
             random.shuffle(train_indices)
@@ -161,7 +161,7 @@ class RecurrentNeuralNetwork(nn.Module):
                         'optimizer' : optimizer.state_dict()}
                 torch.save(state, os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
 
-            if False and epoch - best_validation_pcc_epoch == patience:
+            if  epoch - best_validation_pcc_epoch == patience:
                 break
 
         return train_pccs, validation_pccs
