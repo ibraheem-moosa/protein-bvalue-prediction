@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pad_packed_sequence
 from torch.nn.functional import relu
 from torch.nn.functional import leaky_relu
 from torch.nn.functional import dropout
@@ -51,8 +53,10 @@ class RecurrentNeuralNetwork(nn.Module):
         self.grad_clip = grad_clip
         self.init_layers()
 
-    def forward(self, x):
-        out, h = self.rnn_layer(x)
+    def forward(self, x, lengths):
+        packed_x = pack_padded_sequence(x, lengths, batch_first=True)
+        packed_out, h = self.rnn_layer(packed_x)
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)
         out = self.output_layer(out)
         return out
 
@@ -87,9 +91,9 @@ class RecurrentNeuralNetwork(nn.Module):
             else:
                 bias_init_method(param, 0)
 
-    def predict(self, x):
+    def predict(self, x, lengths):
         with torch.no_grad():
-            out = self.forward(x)
+            out = self.forward(x, lengths)
             return out
 
     def reset_hidden_size(self, hidden_size):
@@ -112,51 +116,58 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.init_layers()
 
-    def train(self, dataset, train_indices, validation_indices, model_dir=None, patience=5, warm_start_last_epoch=-1):
+    def train(self, dataset, validation_dataset, model_dir=None, patience=5, warm_start_last_epoch=-1):
         criterion = nn.MSELoss()
-        optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
+        optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], 
+                        lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
-        
         self._init_weights_()
+        num_of_batches = len(dataset)
+        validation_num_of_batches = len(validation_dataset)
         
-        best_validation_pcc_epoch = 0
-        best_validation_pcc = 0.0
-        validation_pccs = []
-        train_pccs = []
+        best_epoch = 0
+        best_mse = 1000.0
+        validation_mses = []
+        train_mses = []
         for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 20):
             scheduler.step()
             running_loss = 0.0
-            random.shuffle(train_indices)
-            for i in train_indices:
-                x, y = dataset[i]
+            for i in range(num_of_batches):
+                x, y, lengths = dataset[i]
                 optimizer.zero_grad()
-                y_pred = self.forward(x)
+                y_pred = self.forward(x, lengths)
                 loss = criterion(y_pred, y)
                 loss.backward()
                 nn.utils.clip_grad_value_(self.parameters(), self.grad_clip)
                 optimizer.step()
                 running_loss += loss.item()
+            running_loss /= num_of_batches
+            train_mses.append(running_loss)
 
-            train_pcc = get_avg_pcc(self, dataset, train_indices)
-            train_pccs.append(train_pcc)
+            validation_loss = 0.0
+            for i in range(validation_num_of_batches):
+                x, y, lengths = validation_dataset[i]
+                y_pred = self.predict(x, lengths)
+                loss = criterion(y_pred, y)
+                validation_loss += loss.item()
+            validation_loss /= validation_num_of_batches
+            validation_mses.append(validation_loss)
 
-            validation_pcc = get_avg_pcc(self, dataset, validation_indices)
-            validation_pccs.append(validation_pcc)
-            if validation_pcc > best_validation_pcc:
-                best_validation_pcc = validation_pcc
-                best_validation_pcc_epoch = epoch
+            if validation_loss < best_mse:
+                best_mse = validation_loss
+                best_epoch = epoch
+                print(best_epoch)
             
-            print('Epoch: {0:02d} Loss: {1:.6f} Train PCC: {2:.4f} Validation PCC {3:.4f} Time: {4}'.format(
-                                    epoch, running_loss / len(train_indices), train_pcc, validation_pcc, time.strftime('%Y-%m-%d %H:%M:%S')))
-
+            print('Epoch: {0:02d} Loss: {1:.6f} Validation Loss: {2:.6f} Time: {3}'.format(
+                                    epoch, running_loss, validation_loss, time.strftime('%Y-%m-%d %H:%M:%S')))
 
             if model_dir is not None:
                 torch.save(self.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
 
-            if epoch - best_validation_pcc_epoch == patience:
+            if epoch - best_epoch == patience:
                 break
 
-        return train_pccs, validation_pccs
+        return train_mses, validation_mses
 
 
 class LSTMNeuralNetwork(RecurrentNeuralNetwork):
@@ -194,8 +205,10 @@ class LSTMNeuralNetwork(RecurrentNeuralNetwork):
             else:
                 bias_init_method(param, 0)
 
-    def forward(self, x):
-        out, h = self.lstm_layer(x)
+    def forward(self, x, lengths):
+        packed_x = pack_padded_sequence(x, lengths, batch_first=True)
+        packed_out, h = self.lstm_layer(packed_x)
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)
         out = self.output_layer(out)
         return out
 

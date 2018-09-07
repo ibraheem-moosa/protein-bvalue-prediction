@@ -40,8 +40,7 @@ if __name__ == '__main__':
     random.shuffle(indices)
     indices = indices[:300]
     train_indices = indices[:int(0.8 * len(indices))]
-    validation_indices = indices[int(0.8 * len(indices)):]
-
+    test_indices = indices[int(0.8 * len(indices)):]
 
     X_files = []
     y_files = []
@@ -51,8 +50,10 @@ if __name__ == '__main__':
         y_files.append(os.path.join(sys.argv[1], 'y_' + protein + '_rnn_.npz'))
 
     files = list(zip(X_files, y_files))
-    dataset = ProteinDataset(files)
+    dataset = ProteinDataset([files[i] for i in train_indices], 16)
     print('Dataset init done ', len(dataset))
+    test_dataset = ProteinDataset([files[i] for i in test_indices], 16)
+    print('Test Dataset init done ', len(test_dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
     
     if len(sys.argv) == 6:
@@ -97,10 +98,12 @@ if __name__ == '__main__':
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
+    train_mses, test_mses = net.train(dataset, test_dataset, sys.argv[3])
+    print(list(zip(train_mses, test_mses)))
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
-    
+    """
     param_grid = {'init_lr' : 2.0 ** np.arange(-10,-9), 'hidden_size' : [2,4,8],
                     'weight_decay' : 10.0 ** np.arange(-1,-0), 'gamma' : [0.9],
                     'output_layer_depth' : [2],
@@ -129,3 +132,4 @@ if __name__ == '__main__':
             print('{}:{}'.format(param_name, param_value), end=' ')
         print('score: {0:.4f}'.format(results[i][1]))
     #print(results)
+    """
