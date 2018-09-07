@@ -34,6 +34,14 @@ if __name__ == '__main__':
     with open(sys.argv[2]) as protein_list_file:
         protein_list = protein_list_file.read().split()
         protein_list = [s.upper().strip() for s in protein_list]
+    
+    indices = list(range(len(protein_list)))
+    random.seed(42)
+    random.shuffle(indices)
+    indices = indices[:300]
+    train_indices = indices[:int(0.8 * len(indices))]
+    validation_indices = indices[int(0.8 * len(indices)):]
+
 
     X_files = []
     y_files = []
@@ -47,12 +55,6 @@ if __name__ == '__main__':
     print('Dataset init done ', len(dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
     
-    indices = list(range(len(dataset)))
-    random.shuffle(indices)
-    indices = indices[:300]
-    train_indices = indices[:int(0.8 * len(indices))]
-    validation_indices = indices[int(0.8 * len(indices)):]
-
     if len(sys.argv) == 6:
         warm_start_model_params = torch.load(sys.argv[4])
         warm_start_last_epoch = int(sys.argv[5])
