@@ -77,10 +77,8 @@ def get_b_factor_window_seq(seq, window_size):
 
 
 def protein_to_features(seq, ws, local_freq_ws, bfactors):
-    #ohtonum
-    #num_of_columns = (2 * ws + 1) + ws #+21*21 
-    num_of_columns = (2 * ws + 1) * 21 + ws #+21*21 
-    non_zero_elem_per_row = (2 * ws + 1) + ws
+    num_of_columns = 1 + 21 + 21 + (2 * ws + 1) + ws #+21*21 
+    non_zero_elem_per_row = num_of_columns
     data = []
     indices = []
     indptr = [0]
@@ -91,7 +89,6 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
     bfactor_windows = get_b_factor_window_seq(bfactors, ws)
     
     for i in range(len(seq)):
-        '''
         # relative position
         pos = i / len(seq)
         data.append(pos)
@@ -104,21 +101,15 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
         for j in range(21):
             data.append(local_freqs[i][j])
             indices.append(1 + 21 + j)
-        '''
+      
         # amino acids in window in numerical representation
         for j in range(len(windows[i])):
-            #ohtonum
-            #data.append(windows[i][j])
-            data.append(1)
-            #ohtonum
-            #indices.append(j)
-            indices.append(j * 21 + windows[i][j])
-        
+            data.append(windows[i][j])
+            indices.append(1 + 21 + 21 + j)
+           
         for j in range(len(bfactor_windows[i])):
             data.append(bfactor_windows[i][j])
-            #ohtonum
-            #indices.append(len(windows[i]) + j) 
-            indices.append(21* len(windows[i]) + j) 
+            indices.append( 1 + 21 + 21 + len(windows[i]) + j) 
             
         
         '''
@@ -130,18 +121,17 @@ def protein_to_features(seq, ws, local_freq_ws, bfactors):
         '''
 
         indptr.append(indptr[-1] +  non_zero_elem_per_row)
-    #ohtonum    
-    return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns)).todense()
-    #return np.array(data).reshape(-1,num_of_columns)
+        
+    #return scsp.csr_matrix((data, indices, indptr), dtype=np.float32, shape = (len(seq), num_of_columns))
+
+    return np.array(data).reshape(-1,num_of_columns)
 
 
 
 def ndarray_from_files(files, window_size, local_freq_ws, reverse=False):
     y = []
     currently_processing = 0
-    #ohtonum
-    #num_of_columns = (2 * window_size + 1) + window_size #+ 21*21
-    num_of_columns = (2 * window_size + 1) * 21 + window_size #+ 21*21
+    num_of_columns = 1 + 21 + 21 + (2 * window_size + 1) + window_size #+21*21 
     non_zero_elem_per_row = num_of_columns
 
     X = np.zeros((0, num_of_columns))
@@ -161,10 +151,15 @@ def ndarray_from_files(files, window_size, local_freq_ws, reverse=False):
         if reverse:
             seq.reverse()
             bfactors.reverse()
-        X = np.vstack((X, protein_to_features(seq, window_size, local_freq_ws, bfactors)))
-    
+        
+        bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
+        
+        X = np.vstack((X, protein_to_features(seq, window_size, local_freq_ws, list(bfactors))))
+
         #bfactors = np.log(np.array(bfactors))
-        #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
+
+
+        
         y.extend(bfactors)
     y = np.array(y, dtype=np.float32)
     return X, y

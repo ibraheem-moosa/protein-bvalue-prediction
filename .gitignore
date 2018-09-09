@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 data/*
 __pycache__/
+src/clfs_bidirectional/*
 *.py[cod]
 *$py.class
 *.npz
