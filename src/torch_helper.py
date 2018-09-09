@@ -39,13 +39,15 @@ def summarize_nn(net):
         print(summarize_tensor(param))
     print('##############################################################')
 
-def get_avg_pcc(net, dataset, indices):
-    pcc = []
-    for i in indices:
-        x, y = dataset[i]
-        y_pred = net.predict(x)
-        for j in range(x.shape[0]):
-            pcc.append(pearsonr(y_pred.numpy()[j].flatten(), y.numpy()[j].flatten())[0])
+def get_avg_pcc(y_true, y_pred, lengths):
+    pcc =[]
+    y_true = y_true.numpy()
+    y_pred = y_pred.detach().numpy()
+    for i in range(len(lengths)):
+        l = lengths[i]
+        yt = y_true[i].flatten()
+        yp = y_pred[i].flatten()
+        pcc.append(pearsonr(yt[:l], yp[:l])[0])
 
     pcc = np.array(pcc)
     pcc[np.isnan(pcc)] = 0

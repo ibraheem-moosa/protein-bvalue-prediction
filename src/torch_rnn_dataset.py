@@ -19,6 +19,7 @@ class ProteinDataset:
         self._Xes.sort(key=lambda x:x.shape[0], reverse=True)
         self._yes.sort(key=lambda y:y.shape[0], reverse=True)
         self._lengths = [x.shape[0] for x in self._Xes]
+        self._total_length = sum(self._lengths)
 
         X_batches = []
         y_batches = []
@@ -41,4 +42,6 @@ class ProteinDataset:
     def __len__(self):
         return len(self._Xes)
 
+    def total_length(self):
+        return self._total_length
 

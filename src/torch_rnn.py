@@ -117,7 +117,7 @@ class RecurrentNeuralNetwork(nn.Module):
         self.init_layers()
 
     def train(self, dataset, validation_dataset, model_dir=None, patience=5, warm_start_last_epoch=-1):
-        criterion = nn.MSELoss()
+        criterion = nn.MSELoss(reduction='sum')
         optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], 
                         lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
@@ -128,10 +128,11 @@ class RecurrentNeuralNetwork(nn.Module):
         best_epoch = 0
         best_mse = 1000.0
         validation_mses = []
+        validation_pccs = []
         train_mses = []
-        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 20):
+        train_pccs = []
+        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 1000):
             scheduler.step()
-            running_loss = 0.0
             for i in range(num_of_batches):
                 x, y, lengths = dataset[i]
                 optimizer.zero_grad()
@@ -140,26 +141,42 @@ class RecurrentNeuralNetwork(nn.Module):
                 loss.backward()
                 nn.utils.clip_grad_value_(self.parameters(), self.grad_clip)
                 optimizer.step()
-                running_loss += loss.item()
-            running_loss /= num_of_batches
-            train_mses.append(running_loss)
+
+            train_loss = 0.0
+            mean_pcc = 0.0
+            for i in range(num_of_batches):
+                x, y, lengths = dataset[i]
+                y_pred = self.predict(x, lengths)
+                loss = criterion(y_pred, y)
+                train_loss += loss.item()
+                mean_pcc += get_avg_pcc(y, y_pred, lengths)
+            train_loss /= dataset.total_length()
+            mean_pcc /= num_of_batches
+            train_mses.append(train_loss)
+            train_pccs.append(mean_pcc)
 
             validation_loss = 0.0
+            mean_pcc = 0.0
             for i in range(validation_num_of_batches):
                 x, y, lengths = validation_dataset[i]
                 y_pred = self.predict(x, lengths)
                 loss = criterion(y_pred, y)
                 validation_loss += loss.item()
-            validation_loss /= validation_num_of_batches
+                mean_pcc += get_avg_pcc(y, y_pred, lengths)
+            validation_loss /= validation_dataset.total_length()
+            mean_pcc /= validation_num_of_batches
             validation_mses.append(validation_loss)
+            validation_pccs.append(mean_pcc)
 
-            if validation_loss < best_mse:
-                best_mse = validation_loss
+            if train_loss < best_mse:
+                best_mse = train_loss
                 best_epoch = epoch
                 print(best_epoch)
             
-            print('Epoch: {0:02d} Loss: {1:.6f} Validation Loss: {2:.6f} Time: {3}'.format(
-                                    epoch, running_loss, validation_loss, time.strftime('%Y-%m-%d %H:%M:%S')))
+            print('Epoch: {0:02d} Time: {1} Loss: {2:.6f} Test Loss: {3:.6f} PCC: {4:0.6f} Test PCC: {5:0.6f}'.format(
+                                    epoch, time.strftime('%Y-%m-%d %H:%M:%S'), 
+                                    train_loss, validation_loss, 
+                                    train_pccs[-1], validation_pccs[-1]))
 
             if model_dir is not None:
                 torch.save(self.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))

@@ -29,6 +29,14 @@ if __name__ == '__main__':
         print('Usage: python3 regression.py data_dir protein_list checkpoint_dir [warm_start_model] [warm_start_epoch]')
         exit()
 
+    if len(sys.argv) == 6:
+        warm_start_model_params = torch.load(sys.argv[4])
+        warm_start_last_epoch = int(sys.argv[5])
+    else:
+        warm_start_model_params = None
+        warm_start_last_epoch = -1
+
+
     print(time.strftime('%Y-%m-%d %H:%M'))
 
     with open(sys.argv[2]) as protein_list_file:
@@ -38,7 +46,6 @@ if __name__ == '__main__':
     indices = list(range(len(protein_list)))
     random.seed(42)
     random.shuffle(indices)
-    indices = indices[:300]
     train_indices = indices[:int(0.8 * len(indices))]
     test_indices = indices[int(0.8 * len(indices)):]
 
@@ -50,35 +57,32 @@ if __name__ == '__main__':
         y_files.append(os.path.join(sys.argv[1], 'y_' + protein + '_rnn_.npz'))
 
     files = list(zip(X_files, y_files))
-    dataset = ProteinDataset([files[i] for i in train_indices], 16)
+    
+    batch_size = 32
+    
+    dataset = ProteinDataset([files[i] for i in train_indices], batch_size)
     print('Dataset init done ', len(dataset))
-    test_dataset = ProteinDataset([files[i] for i in test_indices], 16)
+    test_dataset = ProteinDataset([files[i] for i in test_indices], batch_size)
     print('Test Dataset init done ', len(test_dataset))
     print(time.strftime('%Y-%m-%d %H:%M'))
     
-    if len(sys.argv) == 6:
-        warm_start_model_params = torch.load(sys.argv[4])
-        warm_start_last_epoch = int(sys.argv[5])
-    else:
-        warm_start_model_params = None
-        warm_start_last_epoch = -1
-
-    batch_size = 1
-    init_lr = 1.0 / 128
+    init_lr = 2.0 ** -16
     momentum = 0.9
-    weight_decay = 1e-3
+    weight_decay = 10
     gamma = 0.9
-    hidden_size = 8
+    hidden_size = 64
     hidden_scale = 1.0
     num_hidden_layers = 1
-    output_layer_depth = 2
+    output_layer_depth = 8
     ff_scale = 0.6
     grad_clip = 10.0
     nesterov = True
 
     print('Initial LR: {}'.format(init_lr))
+    print('Batch Size: {}'.format(batch_size))
     #print('Momentum: {}'.format(momentum))
     print('Weight Decay: {}'.format(weight_decay))
+    print('Gamma: {}'.format(gamma))
     print('Gradient Clip: {}'.format(grad_clip))
     print('Hidden Scale: {}'.format(hidden_scale))
     print('FF Scale: {}'.format(ff_scale))
@@ -98,7 +102,7 @@ if __name__ == '__main__':
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
-    train_mses, test_mses = net.train(dataset, test_dataset, sys.argv[3])
+    train_mses, test_mses = net.train(dataset, test_dataset, sys.argv[3], patience=20)
     print(list(zip(train_mses, test_mses)))
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
