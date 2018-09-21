@@ -42,12 +42,13 @@ class FeedForward(nn.Module):
         criterion = nn.MSELoss(reduction='sum')
         total_mse = 0.0
         while dataset.has_next():
-            X, y = dataset.next()
+            X, y = dataset.next(32)
             y_pred = self.predict(X)
+            y_pred = y_pred.view(-1)
             loss = criterion(y_pred, y)
             total_mse += loss.item()
         dataset.reset()
-        return total_mse / dataset.length()
+        return total_mse / dataset.length
 
     def train(self, num_iter, epoch_per_iter, dataset, validation_dataset):
         init_lr = 0.0005
@@ -63,14 +64,18 @@ class FeedForward(nn.Module):
                     X, y = dataset.next(batch_size)
                     optimizer.zero_grad()
                     y_pred = self.forward(X)
+                    y_pred = y_pred.view(-1)
                     loss = criterion(y_pred, y)
                     loss.backward()
                     optimizer.step()
 
                 dataset.reset()
+                print("Iter: {} Epoch: {} Training done".format(i, epoch))
                 train_mse = self.calculate_mse(dataset)
+                print("Train Loss: {}".format(train_mse))
                 val_mse = self.calculate_mse(validation_dataset)
-                print("Iter: {} Epoch: {} TL: {} VL: {}".format(num_iter, epoch, train_mse, val_mse))
+                print("Validation Loss: {}".format(val_mse))
+                print(time.strftime('%Y-%m-%d %H:%M'))
 
             while dataset.has_next():
                 X, y = dataset.next(batch_size)
@@ -83,7 +88,7 @@ class Dataset:
 
     def __init__(self, X, y, ws):
         self.lengths = list(map(len, y))
-        self.length = sum(lengths)
+        self.length = sum(self.lengths)
         self.ws = ws
         self.y = []
         index = [[], []]
@@ -101,17 +106,15 @@ class Dataset:
                 index[1].extend(list(range(num_column - ws, num_column)))
                 current_row += 1
                 aa_in_window.pop(0)
-                aa_in_window.append(21 if j + ws > len(X[i]) else X[i][j + ws])
-                assert(len(aa_in_window) == 2 * ws + 1)
+                aa_in_window.append(20 if j + ws >= len(X[i]) else X[i][j + ws])
+        index = torch.LongTensor(index)
+        value = torch.FloatTensor(value)
         self.X = torch.sparse.FloatTensor(index, value, torch.Size([current_row, num_column]))
-        self.y = torch.FloatTensor(self.y)
+        self.y = np.array(self.y)
         self.cursor = 0
         self.num_row = current_row
         self.num_col = num_column
         self.nonzero_col = 3 * ws + 1
-
-    def length(self):
-        return self.length
 
     def has_next(self):
         if self.cursor == self.num_row:
@@ -124,22 +127,24 @@ class Dataset:
     def next(self, batch_size=None):
         if batch_size is None:
             batch_size = min(self.num_row, 
-                    (1024 * 1024 * 1024) // (self.num_col * 8))
-        if batch_size == self.num_row:
-            self.cursor = self.num_row
-            return self.X.to_dense(), self.y
+                    (1 * 1024 * 1024) // (self.num_col * 8))
+            print(batch_size)
+
         if self.cursor + batch_size >= self.num_row:
             batch_size = self.num_row - self.cursor
 
         start = self.cursor * self.nonzero_col
         end = start + batch_size * self.nonzero_col
         index = self.X._indices()
-        index = [index[0][start:end], index[1][start:end]]
-        value = self._values()
-        value = values[start:end]
+        index = index[:,start:end]
+        index[0] -= index[0][0].item()
+        value = self.X._values()
+        value = value[start:end]
+        retX = torch.sparse.FloatTensor(index, value, 
+                torch.Size([batch_size, self.num_col])).to_dense()
+        retY = torch.FloatTensor(self.y[self.cursor:self.cursor + batch_size])
         self.cursor += batch_size
-        return torch.sparse.FloatTensor(index, value, 
-                torch.Size([batch_size, self.num_col])).to_dense(), y[self.cursor, self.cursor + batch_size]
+        return retX, retY
 
     def set_y_pred(self, y_pred):
         current_row = 0
@@ -198,6 +203,7 @@ if __name__ == '__main__':
                 line = line.strip()
                 aa, b = line.split()
                 aa = aa_to_index(aa)
+                b = float(b)
                 train_Xes[-1].append(aa)
                 train_ys[-1].append(b)
 
@@ -211,6 +217,7 @@ if __name__ == '__main__':
                 line = line.strip()
                 aa, b = line.split()
                 aa = aa_to_index(aa)
+                b = float(b)
                 val_Xes[-1].append(aa)
                 val_ys[-1].append(b)
 
@@ -221,7 +228,7 @@ if __name__ == '__main__':
     print(time.strftime('%Y-%m-%d %H:%M'))
 
     num_layers = 8
-    net = FeedForward(dataset.num_col, num_layers)
+    net = FeedForward(train_dataset.num_col, num_layers)
     num_iter = 100
     epoch_per_iter = 2
     net.train(num_iter, epoch_per_iter, train_dataset, val_dataset)
