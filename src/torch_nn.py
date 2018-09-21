@@ -17,7 +17,7 @@ class FeedForward(nn.Module):
         self.fc = list()
         for i in range(num_layers - 1):
             self.fc.append(
-                    nn.Linear(input_size, input_size)
+                    nn.Linear(input_size, input_size))
         self.fc.append(nn.Linear(input_size, 1))
         self._init_weights_()
 
@@ -139,8 +139,7 @@ class Dataset:
         value = values[start:end]
         self.cursor += batch_size
         return torch.sparse.FloatTensor(index, value, 
-                torch.Size([batch_size, self.num_col])).to_dense(), 
-                y[self.cursor, self.cursor + batch_size]
+                torch.Size([batch_size, self.num_col])).to_dense(), y[self.cursor, self.cursor + batch_size]
 
     def set_y_pred(self, y_pred):
         current_row = 0
@@ -187,8 +186,8 @@ if __name__ == '__main__':
     indices = list(range(len(files)))
     random.shuffle(indices)
 
-    train_files = [files[i] for i in indices[:int(len(indices * 0.80))]]
-    val_files = [files[i] for i in indices[int(len(indices * 0.80)):]]
+    train_files = [files[i] for i in indices[:int(len(indices) * 0.80)]]
+    val_files = [files[i] for i in indices[int(len(indices) * 0.80):]]
     train_Xes = []
     train_ys = []
     for fname in train_files:
@@ -202,6 +201,8 @@ if __name__ == '__main__':
                 train_Xes[-1].append(aa)
                 train_ys[-1].append(b)
 
+    val_Xes = []
+    val_ys = []
     for fname in val_files:
         with open(os.path.join(data_dir, fname)) as f:
             val_Xes.append([])
