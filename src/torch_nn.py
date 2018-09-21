@@ -4,10 +4,6 @@ from torch.nn.functional import relu
 from torch.nn.functional import leaky_relu
 from torch.nn.functional import dropout
 import numpy as np
-import torch.utils.data
-import scipy.sparse as scsp
-from bisect import bisect
-import pickle
 
 class FeedForward(nn.Module):
     def __init__(self, input_size, num_layers):
@@ -154,88 +150,6 @@ class Dataset:
                 prev_y.append(y_pred[current_row])
                 current_row += 1
 
-
-
-class ProteinDataset(torch.utils.data.Dataset):
-
-    def __init__(self, X_files, y_files, cache_dir, limit=128*1024*1024, cache_prefix='cache-', validation=False):
-        self.cache_dir = cache_dir
-        self._cache_element_counts = []
-        self._validation = validation
-        X_cache_prefix = 'X_' + cache_prefix
-        y_cache_prefix = 'y_' + cache_prefix
-
-        loaded_Xes = []
-        loaded_ys = []
-        current_size = 0
-        matrices_saved = 0
-        total_cache_element_count = 0
-        for xf,yf in zip(X_files, y_files):
-            X = scsp.load_npz(xf)
-            y = np.load(yf)['y']
-            assert(xf.split('/')[-1][1:] == yf.split('/')[-1][1:])
-            assert(X.shape[0] == len(y))
-            if validation:
-                total_cache_element_count += 1
-            else:
-                total_cache_element_count += X.shape[0]
-            loaded_Xes.append(X)
-            loaded_ys.append(y)
-            current_size += X.shape[0] * X.shape[1]
-            if current_size >= limit:
-                if validation:
-                    f = open(os.path.join(cache_dir, X_cache_prefix + str(matrices_saved)), 'wb')
-                    pickle.dump(loaded_Xes, f)
-                    f.close()
-                    f = open(os.path.join(cache_dir, y_cache_prefix + str(matrices_saved)), 'wb')
-                    pickle.dump(loaded_ys, f)
-                    f.close()
-                else:
-                    scsp.save_npz(os.path.join(cache_dir, X_cache_prefix + str(matrices_saved)), scsp.vstack(loaded_Xes))
-                    np.savez(os.path.join(cache_dir, y_cache_prefix + str(matrices_saved)), y=np.hstack(loaded_ys))
-                self._cache_element_counts.append(total_cache_element_count)
-                loaded_Xes = []
-                loaded_ys = []
-                matrices_saved += 1
-                current_size = 0
-            self._num_of_features = X.shape[1]
-        if validation:
-            f = open(os.path.join(cache_dir, X_cache_prefix + str(matrices_saved)), 'wb')
-            pickle.dump(loaded_Xes, f)
-            f.close()
-            f = open(os.path.join(cache_dir, y_cache_prefix + str(matrices_saved)), 'wb')
-            pickle.dump(loaded_ys, f)
-            f.close()
-        else:
-            scsp.save_npz(os.path.join(cache_dir, X_cache_prefix + str(matrices_saved)), scsp.vstack(loaded_Xes))
-            np.savez(os.path.join(cache_dir, y_cache_prefix + str(matrices_saved)), y=np.hstack(loaded_ys))
-        self._cache_element_counts.append(total_cache_element_count)
-        self._last_loaded = -1
-        self._X_cache_prefix = X_cache_prefix
-        self._y_cache_prefix = y_cache_prefix
-
-    def __getitem__(self, idx):
-        i = bisect(self._cache_element_counts, idx)
-        if i != self._last_loaded:
-            if self._validation:
-                with open(os.path.join(self.cache_dir, self._X_cache_prefix + str(i)), 'rb') as X_file:
-                    self._X_cache = pickle.load(X_file)
-                with open(os.path.join(self.cache_dir, self._y_cache_prefix + str(i)), 'rb') as y_file:
-                    self._y_cache = pickle.load(y_file)
-            else:
-                self._X_cache = scsp.load_npz(os.path.join(self.cache_dir, self._X_cache_prefix + str(i) + '.npz')).toarray()
-                self._y_cache = np.load(os.path.join(self.cache_dir, self._y_cache_prefix + str(i) + '.npz'))['y']
-            self._last_loaded = i
-        idx = idx - (0 if i == 0 else self._cache_element_counts[i-1])
-        assert(len(self._X_cache) == len(self._y_cache))
-        if(idx > len(self._X_cache)):
-            print(i, idx)
-        retX = self._X_cache[idx]
-        rety = self._y_cache[idx]
-        return retX, rety
-
-    def __len__(self):
-        return self._cache_element_counts[-1]
 
 def summarize_tensor(tensor):
     return torch.min(tensor).item(), torch.max(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item()
