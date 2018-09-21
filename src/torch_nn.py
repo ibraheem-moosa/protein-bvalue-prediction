@@ -221,4 +221,7 @@ if __name__ == '__main__':
 
     num_layers = 8
     net = FeedForward(dataset.num_col, num_layers)
+    num_iter = 100
+    epoch_per_iter = 2
+    net.train(num_iter, epoch_per_iter, train_dataset, val_dataset)
 
