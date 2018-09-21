@@ -37,6 +37,47 @@ class FeedForward(nn.Module):
         with torch.no_grad():
             return self.forward(x)
 
+    def calculate_mse(self, dataset):
+        criterion = nn.MSELoss(reduction='sum')
+        total_mse = 0.0
+        while dataset.has_next():
+            X, y = dataset.next()
+            y_pred = self.predict(X)
+            loss = criterion(y_pred, y)
+            total_mse += loss.item()
+        dataset.reset()
+        return total_mse / dataset.length()
+
+    def train(self, num_iter, epoch_per_iter, dataset, validation_dataset):
+        init_lr = 0.0005
+        batch_size = 32
+        criterion = nn.MSELoss()
+        for i in range(num_iter):
+            optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : init_lr}],
+                            lr=init_lr, weight_decay=0.1)
+            scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.9)
+            for epoch in range(epoch_per_iter):
+                scheduler.step()
+                while dataset.has_next():
+                    X, y = dataset.next(batch_size)
+                    optimizer.zero_grad()
+                    y_pred = self.forward(X)
+                    loss = criterion(y_pred, y)
+                    loss.backward()
+                    optimizer.step()
+
+                dataset.reset()
+                train_mse = self.calculate_mse(dataset)
+                val_mse = self.calculate_mse(validation_dataset)
+                print("Iter: {} Epoch: {} TL: {} VL: {}".format(num_iter, epoch, train_mse, val_mse))
+
+            while dataset.has_next():
+                X, y = dataset.next(batch_size)
+                y_pred = self.predict(X)
+                dataset.set_y_pred(y_pred)
+            dataset.reset()
+
+
 class ProteinDataset(torch.utils.data.Dataset):
 
     def __init__(self, X_files, y_files, cache_dir, limit=128*1024*1024, cache_prefix='cache-', validation=False):
