@@ -10,75 +10,32 @@ from bisect import bisect
 import pickle
 
 class FeedForward(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, num_layers):
         super(FeedForward, self).__init__()
-        '''
-        self.fc1 = nn.Linear(input_size, 768)
-        self.fc2 = nn.Linear(768, 128)
-        self.fc3 = nn.Linear(128, 64)
-        self.fc4 = nn.Linear(64, 32)
-        self.fc5 = nn.Linear(32, 16)
-        self.fc6 = nn.Linear(16, 16)
-        self.fc7 = nn.Linear(16, 8)
-        self.fc8 = nn.Linear(8, 1)
-        '''
-        self.fc1 = nn.Linear(input_size, 4)
-        self.fc2 = nn.Linear(4, 1)
+        self.num_layers = num_layers
+        self.fc = list()
+        for i in range(num_layers - 1):
+            self.fc.append(
+                    nn.Linear(input_size, input_size)
+        self.fc.append(nn.Linear(input_size, 1))
         self._init_weights_()
 
     def forward(self, x):
-        '''
-        x = relu(self.fc1(x))
-        x = relu(self.fc2(x))
-        x = relu(self.fc3(x))
-        x = relu(self.fc4(x))
-        x = relu(self.fc5(x))
-        x = relu(self.fc6(x))
-        x = relu(self.fc7(x))
-        x = self.fc8(x)
-        '''
-        x = leaky_relu(self.fc1(x))
-        x = self.fc2(x)
+        for i in range(self.num_layers):
+            x = leaky_relu(self.fc[i](x))
         return x
     
     def _init_weights_(self):
-        '''
-        gain = nn.init.calculate_gain('relu')
-        #gain = 10
+        gain = nn.init.calculate_gain('leaky_relu')
         init_method = nn.init.xavier_normal_
         bias_init_method = nn.init.constant_
-        init_method(self.fc1.weight.data, gain=gain)
-        init_method(self.fc2.weight.data, gain=gain)
-        init_method(self.fc3.weight.data, gain=gain)
-        init_method(self.fc4.weight.data, gain=gain)
-        init_method(self.fc5.weight.data, gain=gain)
-        init_method(self.fc6.weight.data, gain=gain)
-        init_method(self.fc7.weight.data, gain=gain)
-        init_method(self.fc8.weight.data, gain=gain)
-        bias_init_method(self.fc1.bias.data, 0)
-        bias_init_method(self.fc2.bias.data, 0)
-        bias_init_method(self.fc3.bias.data, 0)
-        bias_init_method(self.fc4.bias.data, 0)
-        bias_init_method(self.fc5.bias.data, 0)
-        bias_init_method(self.fc6.bias.data, 0)
-        bias_init_method(self.fc7.bias.data, 0)
-        bias_init_method(self.fc8.bias.data, 0)
-        '''
-        nn.init.normal_(self.fc1.weight)
-        nn.init.normal_(self.fc2.weight)
+        for i in range(self.num_layers):
+            init_method(self.fc[i].weight.data, gain=gain)
+            bias_init_method(self.fc[i].bias.data, 0)
 
-    def predict(self, dataset):
+    def predict(self, x):
         with torch.no_grad():
-            Y_pred = []
-            Y_true = []
-            for i in range(len(dataset)):
-                #print(i)
-                X, y = dataset[i]
-                y_pred = self.forward(torch.from_numpy(X.toarray())).numpy().flatten()
-                Y_pred.append(y_pred)
-                Y_true.append(y)
-            return Y_pred, Y_true
-
+            return self.forward(x)
 
 class ProteinDataset(torch.utils.data.Dataset):
 
