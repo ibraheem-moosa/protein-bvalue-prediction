@@ -14,10 +14,10 @@ class FeedForward(nn.Module):
     def __init__(self, input_size, num_layers):
         super(FeedForward, self).__init__()
         self.num_layers = num_layers
-        self.fc = list()
+        self.fc = nn.ModuleList()
         for i in range(num_layers - 1):
-            self.fc.append(
-                    nn.Linear(input_size, input_size))
+            self.fc.append(nn.Linear(input_size, input_size))
+                    
         self.fc.append(nn.Linear(input_size, 1))
         self._init_weights_()
 
@@ -41,21 +41,23 @@ class FeedForward(nn.Module):
     def calculate_mse(self, dataset):
         criterion = nn.MSELoss(reduction='sum')
         total_mse = 0.0
+        y_preds = []
         while dataset.has_next():
-            X, y = dataset.next(32)
+            X, y = dataset.next(16)
             y_pred = self.predict(X)
             y_pred = y_pred.view(-1)
+            y_preds.extend(y_pred.numpy())
             loss = criterion(y_pred, y)
             total_mse += loss.item()
         dataset.reset()
+        print(np.mean(y_preds), np.std(y_preds), np.max(y_preds), np.min(y_preds))
         return total_mse / dataset.length
 
     def train(self, num_iter, epoch_per_iter, dataset, validation_dataset):
-        init_lr = 0.0005
-        batch_size = 32
-        optimizer = torch.optim.Adam([{'params' : self.parameters(), 'initial_lr' : init_lr}],
-                            lr=init_lr, weight_decay=0.1)
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.9)
+        init_lr = 1e-6
+        batch_size = 16
+        optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=0.9)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
         criterion = nn.MSELoss()
         for i in range(num_iter):
             for epoch in range(epoch_per_iter):
@@ -72,21 +74,21 @@ class FeedForward(nn.Module):
                 dataset.reset()
                 print("Iter: {} Epoch: {} Training done".format(i, epoch))
                 train_mse = self.calculate_mse(dataset)
-                print("Train Loss: {}".format(train_mse))
                 val_mse = self.calculate_mse(validation_dataset)
-                print("Validation Loss: {}".format(val_mse))
-                print(time.strftime('%Y-%m-%d %H:%M'))
-
+                print("Train Loss: {} Validation Loss: {}".format(train_mse, val_mse))
+                print(time.strftime('%Y-%m-%d %H:%M:%S'))
+            y_pred = []
             while dataset.has_next():
                 X, y = dataset.next(batch_size)
-                y_pred = self.predict(X)
-                dataset.set_y_pred(y_pred)
+                y_pred.extend(self.predict(X).view(-1))
+            y_pred = [y.item() for y in y_pred]
+            dataset.set_y_pred(y_pred)
             dataset.reset()
 
 
 class Dataset:
 
-    def __init__(self, X, y, ws):
+    def __init__(self, X, y, ws, init_y_pred=0):
         self.lengths = list(map(len, y))
         self.length = sum(self.lengths)
         self.ws = ws
@@ -100,7 +102,7 @@ class Dataset:
             aa_in_window = [20] * ws + X[i][:ws + 1]
             for j in range(len(X[i])):
                 value.extend([1] * (2 * ws + 1))
-                value.extend([0] * ws)
+                value.extend([init_y_pred] * ws)
                 index[0].extend([current_row] * (3 * ws + 1))
                 index[1].extend(list(map(lambda t: 21 * t[0] + t[1], enumerate(aa_in_window))))
                 index[1].extend(list(range(num_column - ws, num_column)))
@@ -151,10 +153,10 @@ class Dataset:
         value = self.X._values()
         for i in range(len(self.lengths)):
             prev_y = [0.0] * self.ws
-            for j in range(len(self.lengths[i])):
-                start = current_row * self.num_col + 2 * self.ws + 1
+            for j in range(self.lengths[i]):
+                start = current_row * self.nonzero_col + 2 * self.ws + 1
                 end = start + self.ws
-                values[start:end] = prev_y
+                value[start:end] = torch.FloatTensor(prev_y)
                 prev_y.pop(0)
                 prev_y.append(y_pred[current_row])
                 current_row += 1
@@ -181,13 +183,18 @@ def aa_to_index(aa):
 
 if __name__ == '__main__':
 
-    if len(sys.argv) < 2:
-        print('Usage: python3 torch_nn.py data_dir')
+    if len(sys.argv) < 3:
+        print('Usage: python3 torch_nn.py data_dir protein_list')
         exit()
-    print(time.strftime('%Y-%m-%d %H:%M'))
+    print(time.strftime('%Y-%m-%d %H:%M:%S'))
     random.seed(42)
+    protein_list = []
+    with open(sys.argv[2]) as f:
+        for line in f:
+            line = line.strip()
+            protein_list.append(line)
     data_dir = sys.argv[1]
-    files = os.listdir(data_dir)
+    files = protein_list
     indices = list(range(len(files)))
     random.shuffle(indices)
 
@@ -206,6 +213,7 @@ if __name__ == '__main__':
                 b = float(b)
                 train_Xes[-1].append(aa)
                 train_ys[-1].append(b)
+        train_ys[-1] = list(np.array(train_ys[-1]) / np.mean(train_ys[-1]))
 
     val_Xes = []
     val_ys = []
@@ -220,16 +228,19 @@ if __name__ == '__main__':
                 b = float(b)
                 val_Xes[-1].append(aa)
                 val_ys[-1].append(b)
+        val_ys[-1] = list(np.array(val_ys[-1]) / np.mean(val_ys[-1]))
 
-
+    train_b_values = [b for ys in train_ys for b in ys]
+    avg_b_value = np.mean(train_b_values)
+    print(np.mean(train_b_values), np.std(train_b_values), np.min(train_b_values), np.max(train_b_values))
     ws = 5
     train_dataset = Dataset(train_Xes, train_ys, ws)
     val_dataset = Dataset(val_Xes, val_ys, ws)
-    print(time.strftime('%Y-%m-%d %H:%M'))
+    print(time.strftime('%Y-%m-%d %H:%M:%S'))
 
-    num_layers = 8
+    num_layers = 1
     net = FeedForward(train_dataset.num_col, num_layers)
-    num_iter = 100
-    epoch_per_iter = 2
+    num_iter = 10
+    epoch_per_iter = 20
     net.train(num_iter, epoch_per_iter, train_dataset, val_dataset)
 
