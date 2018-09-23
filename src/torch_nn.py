@@ -12,6 +12,17 @@ import random
 from scipy.stats import pearsonr
 from Bio.PDB import Polypeptide
 
+def summarize_tensor(tensor):
+    if tensor is None:
+        return None
+    return torch.min(tensor).item(), torch.max(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item()
+def summarize_ndarray(array):
+    return np.min(array), np.max(array), np.mean(array), np.std(array)
+def summarize_ndarrays(arrays):
+    mins, maxs, means, stds = tuple(zip(*list(map(summarize_ndarray, arrays))))
+    return np.mean(mins), np.mean(maxs), np.mean(means), np.mean(stds)
+
+
 class FeedForward(nn.Module):
     def __init__(self, input_size, num_hidden_layers, width=None):
         super(FeedForward, self).__init__()
@@ -54,8 +65,8 @@ class SequentialFeedForward(nn.Module):
         self.base_nn = FeedForward(self.nn_input_size, self.nn_num_layers, width=nn_width)
 
     def forward(self, x):
-        y_pred = [torch.zeros(1, dtype=torch.float) for i in range(self.ws)]
-        x_window = [torch.zeros(21, dtype=torch.float) for i in range(self.ws)]
+        y_pred = [torch.zeros(1, dtype=torch.float, requires_grad=True) for i in range(self.ws)]
+        x_window = [torch.zeros(21, dtype=torch.float, requires_grad=True) for i in range(self.ws)]
         for i in range(len(x)):
             x_window.pop(0)
             x_i = np.zeros(21, dtype=np.float32)
@@ -70,12 +81,19 @@ class SequentialFeedForward(nn.Module):
         with torch.no_grad():
             return self.forward(x)
 
+    def print_description(self):
+        for name, param in self.named_parameters():
+            print(name)
+            print(summarize_tensor(param))
+            print(summarize_tensor(param.grad))
+         
     def train(self, X, Y, init_lr, momentum, weight_decay, gamma, num_epochs):
-        optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
+        optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=momentum)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
-        criterion = nn.MSELoss()
+        criterion = nn.MSELoss(reduction='sum')
         xy_pair = list(zip(X, Y))
         for epoch in range(num_epochs):
+            self.print_description()
             running_loss = 0.0
             index = 0
             for x, y in xy_pair:
@@ -87,17 +105,18 @@ class SequentialFeedForward(nn.Module):
                 running_loss += loss.item()
                 loss.backward()
                 optimizer.step()
-                scheduler.step()
                 index += 1
                 if index % 250 == 0:
                     print("At sample {}".format(index))
+                    self.print_description()
             random.shuffle(xy_pair)
+            scheduler.step()
             print("Epoch: {} Running Loss: {} Average PCC: {}".format(epoch, running_loss, self.avg_pcc(X, Y)))
             print(time.strftime('%Y-%m-%d %H:%M:%S'))
 
 
     def mse(self, X, Y):
-        criterion = nn.MSELoss()
+        criterion = nn.MSELoss(reduction='sum')
         running_loss = 0.0
         for x, y in zip(X, Y):
             y_pred = self.predict(x)
@@ -123,14 +142,6 @@ class SequentialFeedForward(nn.Module):
         return np.mean(pccs)
 
 
-
-def summarize_tensor(tensor):
-    return torch.min(tensor).item(), torch.max(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item()
-def summarize_ndarray(array):
-    return np.min(array), np.max(array), np.mean(array), np.std(array)
-def summarize_ndarrays(arrays):
-    mins, maxs, means, stds = tuple(zip(*list(map(summarize_ndarray, arrays))))
-    return np.mean(mins), np.mean(maxs), np.mean(means), np.mean(stds)
 
 def aa_to_index(aa):
     """
@@ -195,13 +206,13 @@ if __name__ == '__main__':
     print(time.strftime('%Y-%m-%d %H:%M:%S'))
     print(sum(map(len, train_Y)))
     ws = 5
-    init_lr = 1e-2
+    init_lr = 1e-10
     momentum = 0.9
-    weight_decay = 100.0
+    weight_decay = None
     gamma = 0.99
     num_epochs = 10
     num_hidden_layers = 2
-    nn_width = (ws * 21 + ws) // 10
+    nn_width = (ws * 21 + ws) // 5
     net = SequentialFeedForward(ws, num_hidden_layers, nn_width)
     net.train(train_X, train_Y, init_lr, momentum, weight_decay, gamma, num_epochs)
     val_mse = net.mse(val_X, val_Y)
