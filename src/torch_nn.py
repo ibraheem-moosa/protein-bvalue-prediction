@@ -8,26 +8,31 @@ import time
 import sys
 import os
 import random
+import random
+from scipy.stats import pearsonr
 from Bio.PDB import Polypeptide
 
 class FeedForward(nn.Module):
-    def __init__(self, input_size, num_layers):
+    def __init__(self, input_size, num_hidden_layers, width=None):
         super(FeedForward, self).__init__()
-        self.num_layers = num_layers
+        self.num_layers = num_hidden_layers + 2
         self.fc = nn.ModuleList()
-        for i in range(num_layers - 1):
-            self.fc.append(nn.Linear(input_size, input_size))
+        if width is None:
+            width = input_size
+        self.fc.append(nn.Linear(input_size, width))
+        for i in range(num_hidden_layers):
+            self.fc.append(nn.Linear(width, width))
                     
-        self.fc.append(nn.Linear(input_size, 1))
+        self.fc.append(nn.Linear(width, 1))
         self._init_weights_()
 
     def forward(self, x):
         for i in range(self.num_layers):
-            x = leaky_relu(self.fc[i](x))
+            x = relu(self.fc[i](x))
         return x
     
     def _init_weights_(self):
-        gain = nn.init.calculate_gain('leaky_relu')
+        gain = nn.init.calculate_gain('relu')
         init_method = nn.init.xavier_normal_
         bias_init_method = nn.init.constant_
         for i in range(self.num_layers):
@@ -38,128 +43,85 @@ class FeedForward(nn.Module):
         with torch.no_grad():
             return self.forward(x)
 
-    def calculate_mse(self, dataset):
-        criterion = nn.MSELoss(reduction='sum')
-        total_mse = 0.0
-        y_preds = []
-        while dataset.has_next():
-            X, y = dataset.next(16)
-            y_pred = self.predict(X)
-            y_pred = y_pred.view(-1)
-            y_preds.extend(y_pred.numpy())
-            loss = criterion(y_pred, y)
-            total_mse += loss.item()
-        dataset.reset()
-        print(np.mean(y_preds), np.std(y_preds), np.max(y_preds), np.min(y_preds))
-        return total_mse / dataset.length
 
-    def train(self, num_iter, epoch_per_iter, dataset, validation_dataset):
-        init_lr = 1e-6
-        batch_size = 16
-        optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=0.9)
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.99)
+class SequentialFeedForward(nn.Module):
+    def __init__(self, window_size, num_layers, nn_width):
+        super(SequentialFeedForward, self).__init__()
+        self.ws = window_size
+        self.nn_input_size = self.ws * 21 + self.ws
+        self.nn_num_layers = num_layers
+        self.nn_width = nn_width
+        self.base_nn = FeedForward(self.nn_input_size, self.nn_num_layers, width=nn_width)
+
+    def forward(self, x):
+        y_pred = [torch.zeros(1, dtype=torch.float) for i in range(self.ws)]
+        x_window = [torch.zeros(21, dtype=torch.float) for i in range(self.ws)]
+        for i in range(len(x)):
+            x_window.pop(0)
+            x_i = np.zeros(21, dtype=np.float32)
+            x_i[x[i]] = 1.0
+            x_i = torch.from_numpy(x_i)
+            x_i.requires_grad = True
+            x_window.append(x_i)
+            y_pred.append(self.base_nn.forward(torch.cat(x_window + y_pred[i:i+self.ws])))
+        return y_pred[self.ws:]
+
+    def predict(self, x):
+        with torch.no_grad():
+            return self.forward(x)
+
+    def train(self, X, Y, init_lr, momentum, weight_decay, gamma, num_epochs):
+        optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=momentum, weight_decay=weight_decay)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
         criterion = nn.MSELoss()
-        for i in range(num_iter):
-            for epoch in range(epoch_per_iter):
+        xy_pair = list(zip(X, Y))
+        for epoch in range(num_epochs):
+            running_loss = 0.0
+            index = 0
+            for x, y in xy_pair:
+                optimizer.zero_grad()
+                y_pred = self.forward(x)
+                y_pred = torch.cat(y_pred)
+                y_true = torch.from_numpy(y)
+                loss = criterion(y_pred, y_true)
+                running_loss += loss.item()
+                loss.backward()
+                optimizer.step()
                 scheduler.step()
-                while dataset.has_next():
-                    X, y = dataset.next(batch_size)
-                    optimizer.zero_grad()
-                    y_pred = self.forward(X)
-                    y_pred = y_pred.view(-1)
-                    loss = criterion(y_pred, y)
-                    loss.backward()
-                    optimizer.step()
-
-                dataset.reset()
-                print("Iter: {} Epoch: {} Training done".format(i, epoch))
-                train_mse = self.calculate_mse(dataset)
-                val_mse = self.calculate_mse(validation_dataset)
-                print("Train Loss: {} Validation Loss: {}".format(train_mse, val_mse))
-                print(time.strftime('%Y-%m-%d %H:%M:%S'))
-            y_pred = []
-            while dataset.has_next():
-                X, y = dataset.next(batch_size)
-                y_pred.extend(self.predict(X).view(-1))
-            y_pred = [y.item() for y in y_pred]
-            dataset.set_y_pred(y_pred)
-            dataset.reset()
+                index += 1
+                if index % 250 == 0:
+                    print("At sample {}".format(index))
+            random.shuffle(xy_pair)
+            print("Epoch: {} Running Loss: {} Average PCC: {}".format(epoch, running_loss, self.avg_pcc(X, Y)))
+            print(time.strftime('%Y-%m-%d %H:%M:%S'))
 
 
-class Dataset:
+    def mse(self, X, Y):
+        criterion = nn.MSELoss()
+        running_loss = 0.0
+        for x, y in zip(X, Y):
+            y_pred = self.predict(x)
+            y_pred = torch.cat(y_pred)
+            y_true = torch.from_numpy(y)
+            loss = criterion(y_pred, y_true)
+            running_loss += loss.item()
+        return running_loss
 
-    def __init__(self, X, y, ws, init_y_pred=0):
-        self.lengths = list(map(len, y))
-        self.length = sum(self.lengths)
-        self.ws = ws
-        self.y = []
-        index = [[], []]
-        value = []
-        num_column = 21 * (2 * ws + 1) + ws
-        current_row = 0
-        for i in range(len(X)):
-            self.y.extend(y[i])
-            aa_in_window = [20] * ws + X[i][:ws + 1]
-            for j in range(len(X[i])):
-                value.extend([1] * (2 * ws + 1))
-                value.extend([init_y_pred] * ws)
-                index[0].extend([current_row] * (3 * ws + 1))
-                index[1].extend(list(map(lambda t: 21 * t[0] + t[1], enumerate(aa_in_window))))
-                index[1].extend(list(range(num_column - ws, num_column)))
-                current_row += 1
-                aa_in_window.pop(0)
-                aa_in_window.append(20 if j + ws >= len(X[i]) else X[i][j + ws])
-        index = torch.LongTensor(index)
-        value = torch.FloatTensor(value)
-        self.X = torch.sparse.FloatTensor(index, value, torch.Size([current_row, num_column]))
-        self.y = np.array(self.y)
-        self.cursor = 0
-        self.num_row = current_row
-        self.num_col = num_column
-        self.nonzero_col = 3 * ws + 1
+    def avg_pcc(self, X, Y):
+        pccs = []
+        avg_val = 0.0
+        for x, y in zip(X, Y):
+            y_pred = self.predict(x)
+            y_pred = torch.cat(y_pred)
+            y_pred = y_pred.numpy()
+            pcc = pearsonr(y_pred, y)[0]
+            pccs.append(pcc)
+            avg_val += np.mean(y_pred)
+        print(avg_val / len(X))
+        pccs = np.array(pccs)
+        pccs = np.nan_to_num(pccs)
+        return np.mean(pccs)
 
-    def has_next(self):
-        if self.cursor == self.num_row:
-            return False
-        return True
-
-    def reset(self):
-        self.cursor = 0
-
-    def next(self, batch_size=None):
-        if batch_size is None:
-            batch_size = min(self.num_row, 
-                    (1 * 1024 * 1024) // (self.num_col * 8))
-            print(batch_size)
-
-        if self.cursor + batch_size >= self.num_row:
-            batch_size = self.num_row - self.cursor
-
-        start = self.cursor * self.nonzero_col
-        end = start + batch_size * self.nonzero_col
-        index = self.X._indices()
-        index = index[:,start:end]
-        index[0] -= index[0][0].item()
-        value = self.X._values()
-        value = value[start:end]
-        retX = torch.sparse.FloatTensor(index, value, 
-                torch.Size([batch_size, self.num_col])).to_dense()
-        retY = torch.FloatTensor(self.y[self.cursor:self.cursor + batch_size])
-        self.cursor += batch_size
-        return retX, retY
-
-    def set_y_pred(self, y_pred):
-        current_row = 0
-        value = self.X._values()
-        for i in range(len(self.lengths)):
-            prev_y = [0.0] * self.ws
-            for j in range(self.lengths[i]):
-                start = current_row * self.nonzero_col + 2 * self.ws + 1
-                end = start + self.ws
-                value[start:end] = torch.FloatTensor(prev_y)
-                prev_y.pop(0)
-                prev_y.append(y_pred[current_row])
-                current_row += 1
 
 
 def summarize_tensor(tensor):
@@ -200,47 +162,48 @@ if __name__ == '__main__':
 
     train_files = [files[i] for i in indices[:int(len(indices) * 0.80)]]
     val_files = [files[i] for i in indices[int(len(indices) * 0.80):]]
-    train_Xes = []
-    train_ys = []
+    train_X = []
+    train_Y = []
     for fname in train_files:
+        train_X.append([])
+        train_Y.append([])
         with open(os.path.join(data_dir, fname)) as f:
-            train_Xes.append([])
-            train_ys.append([])
             for line in f:
                 line = line.strip()
                 aa, b = line.split()
                 aa = aa_to_index(aa)
                 b = float(b)
-                train_Xes[-1].append(aa)
-                train_ys[-1].append(b)
-        train_ys[-1] = list(np.array(train_ys[-1]) / np.mean(train_ys[-1]))
+                train_X[-1].append(aa)
+                train_Y[-1].append(b)
+        train_Y[-1] = np.array(train_Y[-1], dtype=np.float32)
 
-    val_Xes = []
-    val_ys = []
+    val_X = []
+    val_Y = []
     for fname in val_files:
+        val_X.append([])
+        val_Y.append([])
         with open(os.path.join(data_dir, fname)) as f:
-            val_Xes.append([])
-            val_ys.append([])
             for line in f:
                 line = line.strip()
                 aa, b = line.split()
                 aa = aa_to_index(aa)
                 b = float(b)
-                val_Xes[-1].append(aa)
-                val_ys[-1].append(b)
-        val_ys[-1] = list(np.array(val_ys[-1]) / np.mean(val_ys[-1]))
+                val_X[-1].append(aa)
+                val_Y[-1].append(b)
+        val_Y[-1] = np.array(val_Y[-1], dtype=np.float32)
 
-    train_b_values = [b for ys in train_ys for b in ys]
-    avg_b_value = np.mean(train_b_values)
-    print(np.mean(train_b_values), np.std(train_b_values), np.min(train_b_values), np.max(train_b_values))
-    ws = 5
-    train_dataset = Dataset(train_Xes, train_ys, ws)
-    val_dataset = Dataset(val_Xes, val_ys, ws)
     print(time.strftime('%Y-%m-%d %H:%M:%S'))
-
-    num_layers = 1
-    net = FeedForward(train_dataset.num_col, num_layers)
-    num_iter = 10
-    epoch_per_iter = 20
-    net.train(num_iter, epoch_per_iter, train_dataset, val_dataset)
+    print(sum(map(len, train_Y)))
+    ws = 5
+    init_lr = 1e-2
+    momentum = 0.9
+    weight_decay = 100.0
+    gamma = 0.99
+    num_epochs = 10
+    num_hidden_layers = 2
+    nn_width = (ws * 21 + ws) // 10
+    net = SequentialFeedForward(ws, num_hidden_layers, nn_width)
+    net.train(train_X, train_Y, init_lr, momentum, weight_decay, gamma, num_epochs)
+    val_mse = net.mse(val_X, val_Y)
+    print("Validation Loss: {}".format(val_mse))
 
