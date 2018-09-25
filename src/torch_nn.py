@@ -65,8 +65,8 @@ class SequentialFeedForward(nn.Module):
         self.base_nn = FeedForward(self.nn_input_size, self.nn_num_layers, width=nn_width)
 
     def forward(self, x):
-        y_pred = [torch.zeros(1, dtype=torch.float, requires_grad=True) for i in range(self.ws)]
-        x_window = [torch.zeros(21, dtype=torch.float, requires_grad=True) for i in range(self.ws)]
+        y_pred = [torch.zeros(1, dtype=torch.float, requires_grad=True).cuda() for i in range(self.ws)]
+        x_window = [torch.zeros(21, dtype=torch.float, requires_grad=True).cuda() for i in range(self.ws)]
         for i in range(len(x)):
             x_window.pop(0)
             x_i = np.zeros(21, dtype=np.float32)
@@ -88,6 +88,7 @@ class SequentialFeedForward(nn.Module):
             print(summarize_tensor(param.grad))
          
     def train(self, X, Y, init_lr, momentum, weight_decay, gamma, num_epochs):
+        self.cuda()
         optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=momentum)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
         criterion = nn.MSELoss(reduction='sum')
@@ -108,7 +109,7 @@ class SequentialFeedForward(nn.Module):
                 index += 1
                 if index % 250 == 0:
                     print("At sample {}".format(index))
-                    self.print_description()
+                    #self.print_description()
             random.shuffle(xy_pair)
             scheduler.step()
             print("Epoch: {} Running Loss: {} Average PCC: {}".format(epoch, running_loss, self.avg_pcc(X, Y)))
@@ -120,7 +121,7 @@ class SequentialFeedForward(nn.Module):
         running_loss = 0.0
         for x, y in zip(X, Y):
             y_pred = self.predict(x)
-            y_pred = torch.cat(y_pred)
+            y_pred = torch.cat(y_pred).cpu()
             y_true = torch.from_numpy(y)
             loss = criterion(y_pred, y_true)
             running_loss += loss.item()
