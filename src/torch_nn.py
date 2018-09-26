@@ -60,7 +60,7 @@ class SequentialFeedForward(nn.Module):
     def __init__(self, window_size, num_layers, nn_width):
         super(SequentialFeedForward, self).__init__()
         self.ws = window_size
-        self.nn_input_size = self.ws * 21 + self.ws
+        self.nn_input_size = (self.ws + 1) * 21 + self.ws
         self.nn_num_layers = num_layers
         self.nn_width = nn_width
         self.base_nn = FeedForward(self.nn_input_size, self.nn_num_layers, width=nn_width)
@@ -69,13 +69,13 @@ class SequentialFeedForward(nn.Module):
         y_pred = [-10.0 * torch.ones(1, dtype=torch.float64, requires_grad=True) for i in range(self.ws)]
         x_window = [torch.ones(21, dtype=torch.float64, requires_grad=True) for i in range(self.ws)]
         for i in range(len(x)):
-            x_window.pop(0)
             x_i = np.zeros(21, dtype=np.float64)
             x_i[x[i]] = 1.0
             x_i = torch.from_numpy(x_i)
             x_i.requires_grad = True
             x_window.append(x_i)
             y_pred.append(self.base_nn.forward(torch.cat(x_window + y_pred[i:i+self.ws])))
+            x_window.pop(0)
         return y_pred[self.ws:]
 
     def predict(self, x):
@@ -219,7 +219,7 @@ if __name__ == '__main__':
     gamma = 0.99
     num_epochs = 100
     num_hidden_layers = 8
-    nn_width = (ws * 21 + ws) // 21
+    nn_width = ((ws + 1) * 21 + ws) // 21
     net = SequentialFeedForward(ws, num_hidden_layers, nn_width)
     net.train(train_X, train_Y, init_lr, momentum, weight_decay, gamma, num_epochs)
     val_mse = net.mse(val_X, val_Y)
