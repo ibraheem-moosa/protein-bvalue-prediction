@@ -14,8 +14,8 @@ from Bio.PDB import Polypeptide
 
 def summarize_tensor(tensor):
     if tensor is None:
-        return None
-    return torch.min(tensor).item(), torch.max(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item()
+        return 0.0, 0.0, 0.0, 0.0, 0.0
+    return torch.min(tensor).item(), torch.max(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item(), torch.norm(tensor)
 def summarize_ndarray(array):
     return np.min(array), np.max(array), np.mean(array), np.std(array)
 def summarize_ndarrays(arrays):
@@ -35,6 +35,7 @@ class FeedForward(nn.Module):
             self.fc.append(nn.Linear(width, width))
                     
         self.fc.append(nn.Linear(width, 1))
+        self.double()
         self._init_weights_()
 
     def forward(self, x):
@@ -65,11 +66,11 @@ class SequentialFeedForward(nn.Module):
         self.base_nn = FeedForward(self.nn_input_size, self.nn_num_layers, width=nn_width)
 
     def forward(self, x):
-        y_pred = [torch.zeros(1, dtype=torch.float, requires_grad=True).cuda() for i in range(self.ws)]
-        x_window = [torch.zeros(21, dtype=torch.float, requires_grad=True).cuda() for i in range(self.ws)]
+        y_pred = [-10.0 * torch.ones(1, dtype=torch.float64, requires_grad=True) for i in range(self.ws)]
+        x_window = [torch.ones(21, dtype=torch.float64, requires_grad=True) for i in range(self.ws)]
         for i in range(len(x)):
             x_window.pop(0)
-            x_i = np.zeros(21, dtype=np.float32)
+            x_i = np.zeros(21, dtype=np.float64)
             x_i[x[i]] = 1.0
             x_i = torch.from_numpy(x_i)
             x_i.requires_grad = True
@@ -83,15 +84,16 @@ class SequentialFeedForward(nn.Module):
 
     def print_description(self):
         for name, param in self.named_parameters():
-            print(name)
-            print(summarize_tensor(param))
-            print(summarize_tensor(param.grad))
+            print("\n" + name)
+            w_min, w_max, w_mean, w_std, w_norm = summarize_tensor(param)
+            print("\t min:{:.2f} max:{:.2f} mean:{:.2f} std:{:.2f} norm:{:.2f}".format(w_min, w_max, w_mean, w_std, w_norm))
+            w_min, w_max, w_mean, w_std, w_norm = summarize_tensor(param.grad)
+            print("\t min:{:.2f} max:{:.2f} mean:{:.2f} std:{:.2f} norm:{:.2f}".format(w_min, w_max, w_mean, w_std, w_norm))
          
     def train(self, X, Y, init_lr, momentum, weight_decay, gamma, num_epochs):
-        self.cuda()
         optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=momentum)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
-        criterion = nn.MSELoss(reduction='sum')
+        criterion = nn.L1Loss(reduction='sum')
         xy_pair = list(zip(X, Y))
         for epoch in range(num_epochs):
             self.print_description()
@@ -187,7 +189,9 @@ if __name__ == '__main__':
                 b = float(b)
                 train_X[-1].append(aa)
                 train_Y[-1].append(b)
-        train_Y[-1] = np.array(train_Y[-1], dtype=np.float32)
+        train_Y[-1] = np.array(train_Y[-1], dtype=np.float64)
+        #train_Y[-1] -= train_Y[-1].mean()
+        train_Y[-1] /= train_Y[-1].std()
 
     val_X = []
     val_Y = []
@@ -202,18 +206,20 @@ if __name__ == '__main__':
                 b = float(b)
                 val_X[-1].append(aa)
                 val_Y[-1].append(b)
-        val_Y[-1] = np.array(val_Y[-1], dtype=np.float32)
+        val_Y[-1] = np.array(val_Y[-1], dtype=np.float64)
+        #val_Y[-1] -= val_Y[-1].mean()
+        val_Y[-1] /= val_Y[-1].std()
 
     print(time.strftime('%Y-%m-%d %H:%M:%S'))
     print(sum(map(len, train_Y)))
-    ws = 5
-    init_lr = 1e-10
+    ws = 8
+    init_lr = 1e-7
     momentum = 0.9
-    weight_decay = None
+    weight_decay = 1e5
     gamma = 0.99
-    num_epochs = 10
-    num_hidden_layers = 2
-    nn_width = (ws * 21 + ws) // 5
+    num_epochs = 100
+    num_hidden_layers = 8
+    nn_width = (ws * 21 + ws) // 21
     net = SequentialFeedForward(ws, num_hidden_layers, nn_width)
     net.train(train_X, train_Y, init_lr, momentum, weight_decay, gamma, num_epochs)
     val_mse = net.mse(val_X, val_Y)
