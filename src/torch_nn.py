@@ -91,7 +91,7 @@ class SequentialFeedForward(nn.Module):
             print("\t min:{:.2f} max:{:.2f} mean:{:.2f} std:{:.2f} norm:{:.2f}".format(w_min, w_max, w_mean, w_std, w_norm))
          
     def train(self, X, Y, init_lr, momentum, weight_decay, gamma, num_epochs):
-        optimizer = torch.optim.SGD(self.parameters(), lr=init_lr, momentum=momentum)
+        optimizer = torch.optim.Adam(self.parameters(), lr=init_lr)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
         criterion = nn.L1Loss(reduction='sum')
         xy_pair = list(zip(X, Y))
@@ -213,7 +213,7 @@ if __name__ == '__main__':
     print(time.strftime('%Y-%m-%d %H:%M:%S'))
     print(sum(map(len, train_Y)))
     ws = 8
-    init_lr = 1e-7
+    init_lr = 1e-5
     momentum = 0.9
     weight_decay = 1e5
     gamma = 0.99
