@@ -41,8 +41,8 @@ def summarize_nn(net):
 
 def get_avg_pcc(y_true, y_pred, lengths):
     pcc =[]
-    y_true = y_true.numpy()
-    y_pred = y_pred.detach().numpy()
+    y_true = y_true.cpu().numpy()
+    y_pred = y_pred.detach().cpu().numpy()
     for i in range(len(lengths)):
         l = lengths[i]
         yt = y_true[i].flatten()
