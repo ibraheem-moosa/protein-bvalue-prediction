@@ -116,7 +116,8 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.init_layers()
 
-    def train(self, dataset, validation_dataset, model_dir=None, patience=5, warm_start_last_epoch=-1):
+    def train(self, dataset, validation_dataset, model_dir=None, patience=5, max_iter=100, warm_start_last_epoch=-1):
+        self.output_layer.cuda()
         self.cuda()
         criterion = nn.MSELoss(reduction='sum')
         optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], 
@@ -132,7 +133,7 @@ class RecurrentNeuralNetwork(nn.Module):
         validation_pccs = []
         train_mses = []
         train_pccs = []
-        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 1000):
+        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + max_iter):
             scheduler.step()
             for i in range(num_of_batches):
                 x, y, lengths = dataset[i]

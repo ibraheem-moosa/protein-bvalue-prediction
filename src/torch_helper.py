@@ -13,6 +13,7 @@ import sys
 import time
 import os
 import random
+from torch_rnn_dataset import *
 
 
 def summarize_tensor(tensor):
@@ -53,9 +54,9 @@ def get_avg_pcc(y_true, y_pred, lengths):
     pcc[np.isnan(pcc)] = 0
     return np.mean(pcc)
 
-def cross_validation(net, dataset, indices, k, threshold):
-    n = len(indices) // k
-    r = len(indices) - n * k
+def cross_validation(net, files, batch_size, k, threshold):
+    n = len(files) // k
+    r = len(files) - n * k
     fold_lengths = [n + 1] * r + [n] * (k - r)
     cumulative_fl = [0]
     for fl in fold_lengths:
@@ -63,17 +64,22 @@ def cross_validation(net, dataset, indices, k, threshold):
     scores = []
     for i in range(k):
         print('Cross Validation Fold: {}'.format(i))
-        train_indices = []
-        validation_indices = []
+        train_files = []
+        validation_files = []
         for j in range(k):
             if j == i:
-                validation_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
+                validation_files.extend(files[cumulative_fl[j]:cumulative_fl[j+1]])
             else:
-                train_indices.extend(indices[cumulative_fl[j]:cumulative_fl[j+1]])
-        train_pccs, validation_pccs = net.train(dataset, train_indices, validation_indices) 
-        validation_pcc = max(validation_pccs)
-        scores.append(validation_pcc)
-        if validation_pcc < threshold:
+                train_files.extend(files[cumulative_fl[j]:cumulative_fl[j+1]])
+        train_dataset = ProteinDataset(train_files, batch_size)
+        validation_dataset = ProteinDataset(validation_files, batch_size)
+        train_mses, validation_mses = net.train(train_dataset, validation_dataset) 
+        validation_mse = min(validation_mses)
+        scores.append(validation_mse)
+        print(validation_mse)
+        print(threshold)
+        print(validation_mse > threshold)
+        if validation_mse > threshold:
             break
     return scores
 
@@ -86,7 +92,7 @@ def get_param_config(param_grid, keys):
             for rest_config in get_param_config(param_grid, keys[1:]):
                 yield keys[0], value, rest_config
 
-def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_funcs):
+def gridsearchcv(net, data_files, batch_size, k, threshold, param_grid, param_set_funcs):
     result = []
     num_of_params = len(param_grid)
     for param_config in get_param_config(param_grid, list(param_grid.keys())):
@@ -100,7 +106,7 @@ def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_func
                 break
             
         print('Running CV for params {}'.format(param_config_dict))
-        scores = cross_validation(net, dataset, indices, k, threshold)
+        scores = cross_validation(net, data_files, batch_size, k, threshold)
         mean_score = sum(scores) / len(scores)
         print('Got score {} for params {}'.format(mean_score, param_config_dict))
         result.append((param_config_dict, mean_score))
