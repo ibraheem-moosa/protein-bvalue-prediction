@@ -59,7 +59,7 @@ if __name__ == '__main__':
     files = list(zip(X_files, y_files))
     train_files = [files[i] for i in train_indices]
 
-    batch_size = 32
+    batch_size = 2
     
     #dataset = ProteinDataset([files[i] for i in train_indices], batch_size)
     #print('Dataset init done ', len(dataset))
@@ -110,10 +110,10 @@ if __name__ == '__main__':
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
-    param_grid = {'init_lr' : 10.0 ** np.arange(-6,-1), 'hidden_size' : [8,16,32,64],
-                    'weight_decay' : 10.0 ** np.arange(-6,-0), 'gamma' : [0.9],
-                    'output_layer_depth' : [2,4,8],
-                    'num_hidden_layers' : [1,2]}
+    param_grid = {'init_lr' : 10.0 ** np.arange(-3,-1), 'hidden_size' : [16,32],
+                    'weight_decay' : 10.0 ** np.arange(-6,-5), 'gamma' : [0.9],
+                    'output_layer_depth' : [2,4],
+                    'num_hidden_layers' : [2]}
     def set_init_lr(net, value):
         net.init_lr = value
     def set_hidden_size(net, value):
@@ -133,7 +133,7 @@ if __name__ == '__main__':
                         'num_hidden_layers' : set_num_hidden_layers}
 
     cv_fold = 10
-    cv_mse_threshold = 0.80
+    cv_mse_threshold = 0.85
     results = gridsearchcv(net, files, batch_size, cv_fold, cv_mse_threshold, param_grid, param_set_funcs)
     for i in range(len(results)):
         for param_name, param_value in results[i][0].items():
