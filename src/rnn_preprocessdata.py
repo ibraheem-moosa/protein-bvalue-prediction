@@ -2,6 +2,7 @@ from Bio.PDB import Polypeptide
 import numpy as np
 import random
 import scipy.sparse as scsp
+from sklearn.preprocessing import RobustScaler
 
 def aa_to_index(aa):
     """
@@ -42,7 +43,7 @@ if __name__ == '__main__':
 
     import os
 
-    protein_list = open(sys.argv[3]).read().split(',')
+    protein_list = open(sys.argv[3]).read().split()
     print('Total proteins:', len(protein_list))
 
     currently_processing = 0
@@ -73,9 +74,13 @@ if __name__ == '__main__':
         X = protein_to_features(seq)
         assert(X.shape[0] == len(bfactors))
         if target_available:
-            bfactors = np.log(np.array(bfactors))
-            bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
             bfactors = np.array(bfactors, dtype=np.float32)
+            bfactors = np.log(np.array(bfactors))
+            #bfactors = (bfactors - np.mean(bfactors)) / np.std(bfactors)
+            #bfactors = (bfactors - np.mean(bfactors))
+            scaler = RobustScaler()
+            bfactors = scaler.fit_transform(np.array(bfactors, ndmin=2).transpose()).reshape((-1,))
+            bfactors = np.clip(bfactors, -3, 5)
 
         out_fname_suffix = protein.upper() + '_rnn_'
         # write X

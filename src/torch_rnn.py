@@ -123,7 +123,7 @@ class RecurrentNeuralNetwork(nn.Module):
         best_validation_pcc = 0.0
         validation_pccs = []
         train_pccs = []
-        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 20):
+        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 100):
             scheduler.step()
             running_loss = 0.0
             random.shuffle(train_indices)

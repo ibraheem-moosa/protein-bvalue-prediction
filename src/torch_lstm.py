@@ -101,8 +101,8 @@ if __name__ == '__main__':
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
     
-    param_grid = {'init_lr' : 2.0 ** np.arange(-10,-9), 'hidden_size' : [2,4,8],
-                    'weight_decay' : 10.0 ** np.arange(-1,-0), 'gamma' : [0.9],
+    param_grid = {'init_lr' : 10.0 ** np.arange(-3,-1), 'hidden_size' : [16],
+                    'weight_decay' : 10.0 ** np.arange(-4,-3), 'gamma' : [0.9],
                     'output_layer_depth' : [2],
                     'num_hidden_layers' : [1]}
     def set_init_lr(net, value):
