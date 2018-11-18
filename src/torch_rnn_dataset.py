@@ -13,7 +13,7 @@ class ProteinDataset:
             X = torch.from_numpy(load_npz(xf).toarray()).reshape((-1, 21))
             y = torch.from_numpy(load(yf)['y']).reshape((-1, 1))
             assert(X.shape[0] == y.shape[0])
-            X, y = X.cuda(), y.cuda()
+            #X, y = X.cuda(), y.cuda()
             self._Xes.append(X)
             self._yes.append(y)
 
