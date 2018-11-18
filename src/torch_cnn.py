@@ -54,7 +54,7 @@ class CNN(nn.Module):
         return out
 
     def predict(self, x):
-        x = x.reshape((1,21,-1))
+        x = x.reshape((1,self.input_size,-1))
         with torch.no_grad():
             out = self.forward(x)
             return out
@@ -62,11 +62,12 @@ class CNN(nn.Module):
 
     def _init_weights_(self):
         for name, param in self.named_parameters():
-            print('Initializing parameter {}'.format(name))
+            #print('Initializing parameter {}'.format(name))
             if 'weight' in name:
                 nn.init.xavier_normal_(param, gain=nn.init.calculate_gain('relu'))
             else:
-                nn.init.constant_(param, 0)
+                #nn.init.constant_(param, 0)
+                nn.init.normal_(param)
 
     def reset_weight_decay(self, weight_decay):
         self.weight_decay = weight_decay
@@ -91,6 +92,7 @@ class CNN(nn.Module):
             patience = num_epochs
         #self.cuda()
         criterion = nn.MSELoss(reduction='sum')
+        criterion = nn.MSELoss()
         optimizer = optim.Adam(self.parameters(), 
                         lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
@@ -107,7 +109,7 @@ class CNN(nn.Module):
             random.shuffle(train_indices)
             for i in train_indices:
                 x, y = dataset[i]
-                x = x.reshape((1,21,-1))
+                x = x.reshape((1,self.input_size,-1))
                 optimizer.zero_grad()
                 y_pred = self.forward(x)
                 loss = criterion(y_pred, y)
@@ -238,7 +240,7 @@ if __name__ == '__main__':
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
-    param_grid = {'init_lr' : 10.0 ** np.arange(-5, 0), 'num_layers' : [8],
+    param_grid = {'init_lr' : 10.0 ** np.arange(-3, 0), 'num_layers' : [8],
                     'weight_decay' : 10.0 ** np.arange(-3,-2), 'gamma' : [0.9],
                     'chanel_size' : [3],
                     'kernel_size' : [3]}
@@ -264,7 +266,7 @@ if __name__ == '__main__':
     results.sort(key=lambda t:t[1])
     print(results)
     best_param_config_dict = results[0][0]
-    for name, value in best_param_config_dict:
+    for name, value in best_param_config_dict.items():
         param_set_funcs[name](net, value)
     net.train(dataset, train_indices, validation_indices, num_epochs=1000)
     
