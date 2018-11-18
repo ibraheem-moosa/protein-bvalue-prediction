@@ -24,40 +24,49 @@ from torch_rnn_dataset import *
 
 class CNN(nn.Module):
     def __init__(self, num_layers, input_size, kernel_size, chanel_size, init_lr, gamma, weight_decay):
+        super(CNN, self).__init__()
         self.activation = relu
         self.init_lr = init_lr
         self.gamma = gamma
         self.weight_decay = weight_decay
         self.num_layers = num_layers
+        self.input_size = input_size
         self.conv_layers = []
         self.kernel_size = kernel_size
         self.chanel_size = chanel_size
         self._init_layers_()
 
     def _init_layers_(self):
-        self.kernel_sizes = [kernel_size] * 8
-        self.chanel_sizes = [input_size] + [chanel_size] * 8
+        kernel_sizes = [self.kernel_size] * self.num_layers
+        chanel_sizes = [self.input_size] + [self.chanel_size] * (self.num_layers - 1) + [1]
         for i in range(num_layers):
             self.conv_layers.append(nn.Conv1d(chanel_sizes[i], chanel_sizes[i+1], kernel_sizes[i], padding=kernel_sizes[i] // 2))
-
+        for i in range(num_layers):
+            self.register_parameter('Conv1d-{0:3d}-_weight_'.format(i), self.conv_layers[i].weight)
+            self.register_parameter('Conv1d-{0:3d}-_bias_'.format(i), self.conv_layers[i].bias)
 
     def forward(self, x):
         out = self.activation(self.conv_layers[0](x))
         for i in range(1, num_layers - 1):
-            out = self.activation(self.conv_layers[i](x))
-        out = self.conv_layers[-1](x)
+            out = self.activation(self.conv_layers[i](out))
+        out = self.conv_layers[-1](out)
+        out = out.reshape((1, -1, 1))
         return out
 
     def predict(self, x):
+        x = x.reshape((1,21,-1))
         with torch.no_grad():
             out = self.forward(x)
             return out
 
 
     def _init_weights_(self):
-        for name, param in self.conv_layer.named_parameters():
+        for name, param in self.named_parameters():
             print('Initializing parameter {}'.format(name))
-            nn.init.xavier_normal_(param, gain=nn.init.calculate_gain('relu'))
+            if 'weight' in name:
+                nn.init.xavier_normal_(param, gain=nn.init.calculate_gain('relu'))
+            else:
+                nn.init.constant_(param, 0)
 
     def reset_weight_decay(self, weight_decay):
         self.weight_decay = weight_decay
@@ -82,11 +91,10 @@ class CNN(nn.Module):
             patience = num_epochs
         #self.cuda()
         criterion = nn.MSELoss(reduction='sum')
-        optimizer = optim.Adam( 
+        optimizer = optim.Adam(self.parameters(), 
                         lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
         self._init_weights_()
-        validation_num_of_batches = len(validation_dataset)
         
         best_epoch = 0
         best_mse = 1000.0
@@ -99,6 +107,7 @@ class CNN(nn.Module):
             random.shuffle(train_indices)
             for i in train_indices:
                 x, y = dataset[i]
+                x = x.reshape((1,21,-1))
                 optimizer.zero_grad()
                 y_pred = self.forward(x)
                 loss = criterion(y_pred, y)
@@ -113,7 +122,7 @@ class CNN(nn.Module):
                 y_pred = self.predict(x)
                 loss = criterion(y_pred, y)
                 train_loss += loss.item()
-                mean_pcc += pearsonr(y, y_pred)[0]
+                mean_pcc += pearsonr(y_pred.numpy().flatten(), y.numpy().flatten())[0]
             train_loss /= len(train_indices)
             mean_pcc /= len(train_indices)
             train_mses.append(train_loss)
@@ -126,7 +135,7 @@ class CNN(nn.Module):
                 y_pred = self.predict(x)
                 loss = criterion(y_pred, y)
                 validation_loss += loss.item()
-                mean_pcc += pearsonr(y, y_pred)[0]
+                mean_pcc += pearsonr(y_pred.numpy().flatten(), y.numpy().flatten())[0]
             validation_loss /= len(validation_indices)
             mean_pcc /= len(validation_indices)
             validation_mses.append(validation_loss)
@@ -219,13 +228,13 @@ if __name__ == '__main__':
     num_layers = 8
     kernel_size = 3
     chanel_size = 3
-
+    '''
     print('Initial LR: {}'.format(init_lr))
     print('Weight Decay: {}'.format(weight_decay))
     print('Number of Layers: {}'.format(num_layers))
     print('Adam')
-
-    net = CNN(num_layers, kernel_sizes, chanel_sizes, init_lr, gamma, weight_decay)
+    '''
+    net = CNN(num_layers, 21, kernel_size, chanel_size, init_lr, gamma, weight_decay)
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
@@ -244,7 +253,7 @@ if __name__ == '__main__':
     def set_chanel_size(net, chanel_size):
         net.reset_chanel_size(chanel_size)
     def set_kernel_size(net, kernel_size):
-        net.reset_kernel_size(net, kernel_size)
+        net.reset_kernel_size(kernel_size)
 
     param_set_funcs = {'init_lr' : set_init_lr, 'num_layers' : set_num_layers, 
                         'weight_decay' : set_weight_decay, 'gamma' : set_gamma, 

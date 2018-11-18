@@ -100,7 +100,7 @@ def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_func
             if next_param_config is None:
                 break
             
-        if cv != None:
+        if k != None:
             print('Running CV for params {}'.format(param_config_dict))
             scores = cross_validation(net, dataset, indices, k, threshold)
             mean_score = sum(scores) / len(scores)
