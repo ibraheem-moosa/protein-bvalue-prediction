@@ -100,11 +100,21 @@ def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_func
             if next_param_config is None:
                 break
             
-        print('Running CV for params {}'.format(param_config_dict))
-        scores = cross_validation(net, dataset, indices, k, threshold)
-        mean_score = sum(scores) / len(scores)
-        print('Got score {} for params {}'.format(mean_score, param_config_dict))
-        result.append((param_config_dict, mean_score))
+        if cv != None:
+            print('Running CV for params {}'.format(param_config_dict))
+            scores = cross_validation(net, dataset, indices, k, threshold)
+            mean_score = sum(scores) / len(scores)
+            print('Got score {} for params {}'.format(mean_score, param_config_dict))
+            result.append((param_config_dict, mean_score))
+        else:
+            print('Running for params {}'.format(param_config_dict))
+            train_indices = indices[:int(0.8 * len(indices))]
+            validation_indices = indices[int(0.8 * len(indices)):]
+            train_mses, validation_mses = net.train(dataset, train_indices, validation_indices, num_epochs=10) 
+            score = min(validation_mses)
+            print('Got score {} for params {}'.format(score, param_config_dict))
+            result.append((param_config_dict, score))
+
     return result
 
 
