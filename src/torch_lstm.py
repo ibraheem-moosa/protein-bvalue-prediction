@@ -30,10 +30,10 @@ if __name__ == '__main__':
         exit()
 
     if len(sys.argv) == 6:
-        warm_start_model_params = torch.load(sys.argv[4])
+        warm_start_params = torch.load(sys.argv[4])
         warm_start_last_epoch = int(sys.argv[5])
     else:
-        warm_start_model_params = None
+        warm_start_params = None
         warm_start_last_epoch = -1
 
 
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     init_lr = 1e-3
     momentum = 0.9
     weight_decay = 1e-4
-    gamma = 0.99
+    gamma = 0.98
     hidden_size = 16
     hidden_scale = 1.0
     num_hidden_layers = 6
@@ -99,10 +99,8 @@ if __name__ == '__main__':
             output_layer_depth=output_layer_depth,
             hidden_scale=hidden_scale, ff_scale=ff_scale, 
             init_lr=init_lr, gamma=gamma, weight_decay=weight_decay)
-    if warm_start_model_params != None:
-        net.load_state_dict(warm_start_model_params)
 
-    train_mses, test_mses = net.train(dataset, test_dataset, sys.argv[3], patience=20, warm_start_last_epoch=warm_start_last_epoch)
+    train_mses, test_mses = net.train(dataset, test_dataset, sys.argv[3], patience=20, warm_start_params=warm_start_params,  warm_start_last_epoch=warm_start_last_epoch)
     #print(list(zip(train_mses, test_mses)))
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)

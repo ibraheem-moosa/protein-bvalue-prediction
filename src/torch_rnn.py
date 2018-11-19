@@ -91,6 +91,12 @@ class RecurrentNeuralNetwork(nn.Module):
             else:
                 bias_init_method(param, 0)
 
+    def pcc(self, y_pred, y_true):
+        y_pred -= y_pred.mean()
+        y_true -= y_true.mean()
+        return - torch.sum(y_pred * y_true) * torch.rsqrt(torch.sum(y_pred * y_pred) * torch.sum(y_true * y_true))
+
+
     def predict(self, x, lengths):
         with torch.no_grad():
             out = self.forward(x, lengths)
@@ -116,11 +122,15 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.init_layers()
 
-    def train(self, dataset, validation_dataset, model_dir=None, patience=5, warm_start_last_epoch=-1):
+    def train(self, dataset, validation_dataset, model_dir=None, patience=5, warm_start_params=None, warm_start_last_epoch=-1):
         #self.cuda()
         criterion = nn.MSELoss(reduction='sum')
+        criterion = self.pcc
         optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], 
                         lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
+        if warm_start_params != None:
+            net.load_state_dict(warm_start_params['state_dict'])
+            optimizer.load_state_dict(warm_start_params['optim'])
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
         self._init_weights_()
         num_of_batches = len(dataset)
@@ -180,7 +190,8 @@ class RecurrentNeuralNetwork(nn.Module):
                                     train_pccs[-1], validation_pccs[-1]))
 
             if model_dir is not None:
-                torch.save(self.state_dict(), os.path.join(model_dir, 'net-{0:02d}'.format(epoch)))
+                state_to_save = {'state_dict': self.state_dict(), 'optim': optimizer.state_dict()}
+                torch.save(state_to_save, os.path.join(model_dir, 'net-{0:03d}'.format(epoch)))
 
             if epoch - best_epoch == patience:
                 break
