@@ -142,7 +142,7 @@ class RecurrentNeuralNetwork(nn.Module):
         validation_pccs = []
         train_mses = []
         train_pccs = []
-        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + 1000):
+        for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + max_iter):
             scheduler.step()
             for i in range(num_of_batches):
                 x, y, lengths = dataset[i]

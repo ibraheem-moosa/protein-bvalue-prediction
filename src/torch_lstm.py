@@ -57,6 +57,9 @@ if __name__ == '__main__':
         y_files.append(os.path.join(sys.argv[1], 'y_' + protein + '_rnn_.npz'))
 
     files = list(zip(X_files, y_files))
+    train_files = [files[i] for i in train_indices]
+
+    batch_size = 2
     
     batch_size = 256
     
@@ -76,6 +79,8 @@ if __name__ == '__main__':
     output_layer_depth = 2
     ff_scale = 0.6
     grad_clip = 10.0
+    max_iter = 1000
+    patience = 500
     nesterov = True
 
     print('Initial LR: {}'.format(init_lr))
@@ -105,11 +110,10 @@ if __name__ == '__main__':
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)
     #print(scores)
-    """
-    param_grid = {'init_lr' : 2.0 ** np.arange(-10,-9), 'hidden_size' : [2,4,8],
-                    'weight_decay' : 10.0 ** np.arange(-1,-0), 'gamma' : [0.9],
-                    'output_layer_depth' : [2],
-                    'num_hidden_layers' : [1]}
+    param_grid = {'init_lr' : 10.0 ** np.arange(-3,-1), 'hidden_size' : [16,32],
+                    'weight_decay' : 10.0 ** np.arange(-6,-5), 'gamma' : [0.9],
+                    'output_layer_depth' : [2,4],
+                    'num_hidden_layers' : [2]}
     def set_init_lr(net, value):
         net.init_lr = value
     def set_hidden_size(net, value):
@@ -128,10 +132,14 @@ if __name__ == '__main__':
                         'output_layer_depth' : set_output_layer_depth,
                         'num_hidden_layers' : set_num_hidden_layers}
 
-    results = gridsearchcv(net, dataset, indices, 3, 0.45, param_grid, param_set_funcs)
+    cv_fold = 10
+    cv_mse_threshold = 0.85
+    results = gridsearchcv(net, files, batch_size, cv_fold, cv_mse_threshold, param_grid, param_set_funcs)
     for i in range(len(results)):
         for param_name, param_value in results[i][0].items():
             print('{}:{}'.format(param_name, param_value), end=' ')
         print('score: {0:.4f}'.format(results[i][1]))
     #print(results)
-    """
+    best_config = max(results, key=lambda t:t[1])
+    print(best_config)
+    
