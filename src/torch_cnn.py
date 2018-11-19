@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from math import sqrt
 import torch.optim as optim
 from sklearn.metrics import r2_score
+from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr
 import sys
 import time
@@ -23,10 +24,12 @@ from torch_rnn_dataset import *
 
 
 class CNN(nn.Module):
-    def __init__(self, num_layers, input_size, kernel_size, chanel_size, init_lr, gamma, weight_decay):
+    def __init__(self, num_layers, input_size, kernel_size, chanel_size, init_lr, gamma, weight_decay, momentum=0):
         super(CNN, self).__init__()
-        self.activation = relu
+        self.activation = torch.sigmoid
+        #self.activation = relu
         self.init_lr = init_lr
+        self.momentum = momentum
         self.gamma = gamma
         self.weight_decay = weight_decay
         self.num_layers = num_layers
@@ -39,15 +42,17 @@ class CNN(nn.Module):
     def _init_layers_(self):
         kernel_sizes = [self.kernel_size] * self.num_layers
         chanel_sizes = [self.input_size] + [self.chanel_size] * (self.num_layers - 1) + [1]
-        for i in range(num_layers):
+        del self.conv_layers
+        self.conv_layers = []
+        for i in range(self.num_layers):
             self.conv_layers.append(nn.Conv1d(chanel_sizes[i], chanel_sizes[i+1], kernel_sizes[i], padding=kernel_sizes[i] // 2))
-        for i in range(num_layers):
+        for i in range(self.num_layers):
             self.register_parameter('Conv1d-{0:3d}-_weight_'.format(i), self.conv_layers[i].weight)
             self.register_parameter('Conv1d-{0:3d}-_bias_'.format(i), self.conv_layers[i].bias)
 
     def forward(self, x):
-        out = self.activation(self.conv_layers[0](x))
-        for i in range(1, num_layers - 1):
+        out = x
+        for i in range(self.num_layers - 1):
             out = self.activation(self.conv_layers[i](out))
         out = self.conv_layers[-1](out)
         out = out.reshape((1, -1, 1))
@@ -59,15 +64,15 @@ class CNN(nn.Module):
             out = self.forward(x)
             return out
 
-
     def _init_weights_(self):
         for name, param in self.named_parameters():
             #print('Initializing parameter {}'.format(name))
             if 'weight' in name:
                 nn.init.xavier_normal_(param, gain=nn.init.calculate_gain('relu'))
+                #nn.init.normal_(param, std=0.1)
             else:
                 #nn.init.constant_(param, 0)
-                nn.init.normal_(param)
+                nn.init.normal_(param, std=0.1)
 
     def reset_weight_decay(self, weight_decay):
         self.weight_decay = weight_decay
@@ -87,19 +92,45 @@ class CNN(nn.Module):
         self.kernel_size = kernel_size
         self._init_layers_()
 
+    def shift(self, y_pred, y_true):
+        y_true_lshift = torch.zeros(y_true.shape)
+        y_true_rshift = torch.zeros(y_true.shape)
+        y_true_lshift[:-1] = y_true[1:]
+        y_true_rshift[1:] = y_true[:-1]
+        y_pred_lshift = torch.zeros(y_pred.shape)
+        y_pred_rshift = torch.zeros(y_pred.shape)
+        y_pred_lshift[:-1] = y_pred[1:]
+        y_pred_rshift[1:] = y_pred[:-1]
+        lshift_del = y_pred_lshift - y_true_lshift
+        rshift_del = y_pred_rshift - y_true_rshift
+        return torch.sum(lshift_del * lshift_del) + torch.sum(rshift_del * rshift_del)
+ 
+    def pcc(self, y_pred, y_true):
+        y_pred -= y_pred.mean()
+        y_true -= y_true.mean()
+        return - torch.sum(y_pred * y_true) * torch.rsqrt(torch.sum(y_pred * y_pred) * torch.sum(y_true * y_true))
+
     def train(self, dataset, train_indices, validation_indices, model_dir=None, num_epochs=1000, patience=None, warm_start_last_epoch=-1):
         if patience == None:
             patience = num_epochs
         #self.cuda()
-        criterion = nn.MSELoss(reduction='sum')
         criterion = nn.MSELoss()
+        criterion = self.pcc
+        criterion = nn.L1Loss()
         optimizer = optim.Adam(self.parameters(), 
                         lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
+        #optimizer = optim.SGD(self.parameters(),
+        #        lr=self.init_lr, weight_decay=self.weight_decay, momentum=self.momentum, nesterov=True)
+        #optimizer = optim.ASGD(self.parameters(),
+        #        lr=self.init_lr, weight_decay=self.weight_decay)
+        #optimizer = optim.Adagrad(self.parameters(),
+        #        lr=self.init_lr, weight_decay=self.weight_decay, lr_decay=0.1)
+ 
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, self.gamma)
         self._init_weights_()
         
         best_epoch = 0
-        best_mse = 1000.0
+        best_pcc = -1000.0
         validation_mses = []
         validation_pccs = []
         train_mses = []
@@ -112,47 +143,51 @@ class CNN(nn.Module):
                 x = x.reshape((1,self.input_size,-1))
                 optimizer.zero_grad()
                 y_pred = self.forward(x)
-                loss = criterion(y_pred, y)
+                loss = criterion(y_pred, y)# + criterion2(y_pred, y)
                 loss.backward()
                 #nn.utils.clip_grad_value_(self.parameters(), self.grad_clip)
                 optimizer.step()
 
-            train_loss = 0.0
             mean_pcc = 0.0
+            mean_mse = 0.0
             for i in train_indices:
                 x, y = dataset[i]
                 y_pred = self.predict(x)
-                loss = criterion(y_pred, y)
-                train_loss += loss.item()
                 mean_pcc += pearsonr(y_pred.numpy().flatten(), y.numpy().flatten())[0]
-            train_loss /= len(train_indices)
+                mean_mse += mean_squared_error(y_pred.numpy().flatten(), y.numpy().flatten())
             mean_pcc /= len(train_indices)
-            train_mses.append(train_loss)
+            mean_mse /= len(train_indices)
+            train_mses.append(mean_mse)
             train_pccs.append(mean_pcc)
-
-            validation_loss = 0.0
+            if mean_pcc > best_pcc:
+                best_pcc = mean_pcc
+                best_epoch = epoch
+                print(best_epoch)
+ 
             mean_pcc = 0.0
+            mean_mse = 0.0
             for i in validation_indices:
                 x, y = dataset[i]
                 y_pred = self.predict(x)
-                loss = criterion(y_pred, y)
-                validation_loss += loss.item()
+                #if random.random() < 0.001:
+                #    plot_true_and_prediction(y.numpy().flatten(), y_pred.numpy().flatten())
                 mean_pcc += pearsonr(y_pred.numpy().flatten(), y.numpy().flatten())[0]
-            validation_loss /= len(validation_indices)
+                mean_mse += mean_squared_error(y_pred.numpy().flatten(), y.numpy().flatten())
             mean_pcc /= len(validation_indices)
-            validation_mses.append(validation_loss)
+            mean_mse /= len(validation_indices)
+            validation_mses.append(mean_mse)
             validation_pccs.append(mean_pcc)
 
-            if train_loss < best_mse:
-                best_mse = train_loss
-                best_epoch = epoch
-                print(best_epoch)
-            
-            print('Epoch: {0:02d} Time: {1} Loss: {2:.6f} Test Loss: {3:.6f} PCC: {4:0.6f} Test PCC: {5:0.6f}'.format(
+           
+            print('Epoch: {0:02d} Time: {1} MSE: {2:.6f} Test MSE: {3:.6f} PCC: {4:0.6f} Test PCC: {5:0.6f}'.format(
                                     epoch, time.strftime('%Y-%m-%d %H:%M:%S'), 
-                                    train_loss, validation_loss, 
+                                    train_mses[-1], validation_mses[-1], 
                                     train_pccs[-1], validation_pccs[-1]))
 
+            for name, param in self.named_parameters():
+                print(name)
+                print(summarize_tensor(param))
+                print(summarize_tensor(param.grad))
             if model_dir is not None:
                 state_to_save = {'state_dict': self.state_dict(), 'optim': optimizer.state_dict()}
                 torch.save(self.state_dict(), os.path.join(model_dir, 'net-{0:03d}'.format(epoch)))
@@ -224,26 +259,28 @@ if __name__ == '__main__':
 
     batch_size = 1
 
-    init_lr = 1.0 / 128
-    weight_decay = 1e-3
+    init_lr = 1e-4
+    momentum = 0.9
+    weight_decay = 0.0
     gamma = 0.9
-    num_layers = 8
+    num_layers = 15
     kernel_size = 3
     chanel_size = 3
-    '''
     print('Initial LR: {}'.format(init_lr))
     print('Weight Decay: {}'.format(weight_decay))
     print('Number of Layers: {}'.format(num_layers))
-    print('Adam')
-    '''
-    net = CNN(num_layers, 21, kernel_size, chanel_size, init_lr, gamma, weight_decay)
+    print('Kernel Size: {}'.format(kernel_size))
+    print('Chanel Size: {}'.format(chanel_size))
+    net = CNN(num_layers, 21, kernel_size, chanel_size, init_lr, gamma, weight_decay, momentum=momentum)
+    net.train(dataset, train_indices, validation_indices, num_epochs=1000, patience=20)
+    exit()
     if warm_start_model_params != None:
         net.load_state_dict(warm_start_model_params)
 
-    param_grid = {'init_lr' : 10.0 ** np.arange(-3, 0), 'num_layers' : [8],
-                    'weight_decay' : 10.0 ** np.arange(-3,-2), 'gamma' : [0.9],
+    param_grid = {'init_lr' : 10.0 ** np.arange(-4, -3), 'num_layers' : [4],
+                    'weight_decay' : 10.0 ** np.arange(-1, 0), 'gamma' : [0.9],
                     'chanel_size' : [3],
-                    'kernel_size' : [3]}
+                    'kernel_size' : [7]}
     def set_init_lr(net, value):
         net.init_lr = value
     def set_weight_decay(net, weight_decay):

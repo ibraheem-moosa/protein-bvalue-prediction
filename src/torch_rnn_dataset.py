@@ -26,6 +26,8 @@ class ProteinDataset(torch.utils.data.Dataset):
         for xf,yf in files:
             X = torch.from_numpy(scsp.load_npz(xf).toarray()).reshape((-1, 21))
             y = torch.from_numpy(np.load(yf)['y']).reshape((-1, 1))
+            X = X[10:-10]
+            y = y[10:-10]
             assert(X.shape[0] == y.shape[0])
             self._Xes.append(X)
             self._yes.append(y)

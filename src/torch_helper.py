@@ -28,7 +28,7 @@ def plot_true_and_prediction(y_true, y_pred):
     fig = plt.figure()
     timer = fig.canvas.new_timer(interval=10000)
     timer.add_callback(close_event)
-    plt.title('Bidirectional, 8 Hidden States, 2 Output Layers')
+    plt.title('True green, Prediction yellow')
     plt.plot(y_pred, 'y-')
     plt.plot(y_true, 'g-')
     timer.start()
@@ -96,6 +96,7 @@ def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_func
         while True:
             key, value, next_param_config = next_param_config
             param_config_dict[key] = value
+            print('Setting {} to {}'.format(key, value))
             param_set_funcs[key](net, value)
             if next_param_config is None:
                 break
@@ -110,7 +111,7 @@ def gridsearchcv(net, dataset, indices, k, threshold, param_grid, param_set_func
             print('Running for params {}'.format(param_config_dict))
             train_indices = indices[:int(0.8 * len(indices))]
             validation_indices = indices[int(0.8 * len(indices)):]
-            train_mses, validation_mses = net.train(dataset, train_indices, validation_indices, num_epochs=10) 
+            train_mses, validation_mses = net.train(dataset, train_indices, validation_indices, num_epochs=30) 
             score = min(validation_mses)
             print('Got score {} for params {}'.format(score, param_config_dict))
             result.append((param_config_dict, score))
