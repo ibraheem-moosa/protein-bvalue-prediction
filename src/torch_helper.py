@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from math import sqrt
 import torch.optim as optim
 from sklearn.metrics import r2_score
+from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr
 import sys
 import time
@@ -53,6 +54,21 @@ def get_avg_pcc(y_true, y_pred, lengths):
     pcc = np.array(pcc)
     pcc[np.isnan(pcc)] = 0
     return np.mean(pcc)
+
+def get_avg_mse(y_true, y_pred, lengths):
+    mse =[]
+    y_true = y_true.cpu().numpy()
+    y_pred = y_pred.detach().cpu().numpy()
+    for i in range(len(lengths)):
+        l = lengths[i]
+        yt = y_true[i].flatten()
+        yp = y_pred[i].flatten()
+        mse.append(mean_squared_error(yt[:l], yp[:l]))
+
+    mse = np.array(mse)
+    mse[np.isnan(mse)] = 0
+    return np.mean(mse)
+
 
 def cross_validation(net, files, batch_size, k, threshold):
     n = len(files) // k

@@ -59,8 +59,6 @@ if __name__ == '__main__':
     files = list(zip(X_files, y_files))
     train_files = [files[i] for i in train_indices]
 
-    batch_size = 2
-    
     batch_size = 256
     
     dataset = ProteinDataset([files[i] for i in train_indices], batch_size)
@@ -72,7 +70,7 @@ if __name__ == '__main__':
     init_lr = 1e-3
     momentum = 0.9
     weight_decay = 1e-4
-    gamma = 0.98
+    gamma = 0.99
     hidden_size = 16
     hidden_scale = 1.0
     num_hidden_layers = 6
@@ -105,7 +103,8 @@ if __name__ == '__main__':
             hidden_scale=hidden_scale, ff_scale=ff_scale, 
             init_lr=init_lr, gamma=gamma, weight_decay=weight_decay)
 
-    train_mses, test_mses = net.train(dataset, test_dataset, sys.argv[3], patience=20, warm_start_params=warm_start_params,  warm_start_last_epoch=warm_start_last_epoch)
+    train_mses, test_mses = net.train(dataset, test_dataset, sys.argv[3], patience=20, warm_start_params=warm_start_params,  warm_start_last_epoch=warm_start_last_epoch, max_iter=max_iter)
+    exit()
     #print(list(zip(train_mses, test_mses)))
     #train_nn(net, dataset, train_indices, validation_indices, sys.argv[3])
     #scores = cross_validation(net, dataset, indices, 10, 0.40)

@@ -122,7 +122,7 @@ class RecurrentNeuralNetwork(nn.Module):
         self.num_hidden_layers = num_hidden_layers
         self.init_layers()
 
-    def train(self, dataset, validation_dataset, model_dir=None, patience=5, warm_start_params=None, warm_start_last_epoch=-1):
+    def train(self, dataset, validation_dataset, model_dir=None, patience=5, max_iter=1000, warm_start_params=None, warm_start_last_epoch=-1):
         #self.cuda()
         criterion = nn.MSELoss(reduction='sum')
         criterion = self.pcc
@@ -153,40 +153,38 @@ class RecurrentNeuralNetwork(nn.Module):
                 nn.utils.clip_grad_value_(self.parameters(), self.grad_clip)
                 optimizer.step()
 
-            train_loss = 0.0
+            mean_mse = 0.0
             mean_pcc = 0.0
             for i in range(num_of_batches):
                 x, y, lengths = dataset[i]
                 y_pred = self.predict(x, lengths)
-                loss = criterion(y_pred, y)
-                train_loss += loss.item()
                 mean_pcc += get_avg_pcc(y, y_pred, lengths)
-            train_loss /= dataset.total_length()
+                mean_mse += get_avg_mse(y, y_pred, lengths)
             mean_pcc /= num_of_batches
-            train_mses.append(train_loss)
+            mean_mse /= num_of_batches
+            train_mses.append(mean_mse)
             train_pccs.append(mean_pcc)
 
-            validation_loss = 0.0
+            mean_mse = 0.0
             mean_pcc = 0.0
             for i in range(validation_num_of_batches):
                 x, y, lengths = validation_dataset[i]
                 y_pred = self.predict(x, lengths)
-                loss = criterion(y_pred, y)
-                validation_loss += loss.item()
                 mean_pcc += get_avg_pcc(y, y_pred, lengths)
-            validation_loss /= validation_dataset.total_length()
+                mean_mse += get_avg_mse(y, y_pred, lengths)
             mean_pcc /= validation_num_of_batches
-            validation_mses.append(validation_loss)
+            mean_mse /= validation_num_of_batches
+            validation_mses.append(mean_mse)
             validation_pccs.append(mean_pcc)
 
-            if train_loss < best_mse:
-                best_mse = train_loss
+            if train_mses[-1] < best_mse:
+                best_mse = train_mses[-1]
                 best_epoch = epoch
                 print(best_epoch)
             
-            print('Epoch: {0:02d} Time: {1} Loss: {2:.6f} Test Loss: {3:.6f} PCC: {4:0.6f} Test PCC: {5:0.6f}'.format(
+            print('Epoch: {0:02d} Time: {1} MSE: {2:.6f} Test MSE: {3:.6f} PCC: {4:0.6f} Test PCC: {5:0.6f}'.format(
                                     epoch, time.strftime('%Y-%m-%d %H:%M:%S'), 
-                                    train_loss, validation_loss, 
+                                    train_mses[-1], validation_mses[-1], 
                                     train_pccs[-1], validation_pccs[-1]))
 
             if model_dir is not None:
