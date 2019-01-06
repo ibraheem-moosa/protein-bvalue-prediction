@@ -16,6 +16,13 @@ import os
 import random
 from torch_rnn_dataset import *
 
+def write_preds(proteins, preds, dirname):
+    for i in range(len(proteins)):
+        protein = proteins[i]
+        with open(os.path.join(dirname, protein), "w") as f:
+            for j in range(len(preds[i])):
+                f.write('{}\n'.format(preds[i][j]))
+
 
 def summarize_tensor(tensor):
     return torch.max(tensor).item(), torch.min(tensor).item(), torch.mean(tensor).item(), torch.std(tensor).item()

@@ -83,7 +83,7 @@ if __name__ == '__main__':
     ff_scale = 0.6
     grad_clip = 10.0
     max_iter = 100
-    patience = 10
+    patience = 5
     nesterov = True
 
     print('Initial LR: {}'.format(init_lr))
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     print('Adam')
     #print('Adadelta')
 
-    net = LSTMNeuralNetwork(21,
+    net = GRUNeuralNetwork(21,
             hidden_size=hidden_size,
             num_hidden_layers=num_hidden_layers,
             output_layer_depth=output_layer_depth,

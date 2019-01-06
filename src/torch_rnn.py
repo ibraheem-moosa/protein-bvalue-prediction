@@ -91,7 +91,7 @@ class RecurrentNeuralNetwork(nn.Module):
             else:
                 bias_init_method(param, 0)
 
-    def pcc(self, y_pred, y_true):
+    def pcc(self, y_pred, y_true, lengths):
         y_pred -= y_pred.mean()
         y_true -= y_true.mean()
         return - torch.sum(y_pred * y_true) * torch.rsqrt(torch.sum(y_pred * y_pred) * torch.sum(y_true * y_true))
@@ -125,7 +125,7 @@ class RecurrentNeuralNetwork(nn.Module):
     def train(self, dataset, validation_dataset, model_dir=None, patience=5, max_iter=1000, warm_start_params=None, warm_start_last_epoch=-1):
         #self.cuda()
         criterion = nn.MSELoss(reduction='sum')
-        criterion = self.pcc
+        #criterion = self.pcc
         optimizer = optim.Adam([{'params' : self.parameters(), 'initial_lr' : self.init_lr}], 
                         lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=False)
         if warm_start_params != None:
@@ -137,7 +137,7 @@ class RecurrentNeuralNetwork(nn.Module):
         validation_num_of_batches = len(validation_dataset)
         
         best_epoch = 0
-        best_mse = 1000.0
+        best_pcc = -1000
         validation_mses = []
         validation_pccs = []
         train_mses = []
@@ -145,9 +145,10 @@ class RecurrentNeuralNetwork(nn.Module):
         for epoch in range(warm_start_last_epoch + 1, warm_start_last_epoch + 1 + max_iter):
             scheduler.step()
             for i in range(num_of_batches):
-                x, y, lengths = dataset[i]
+                x, y, lengths, _ = dataset[i]
                 optimizer.zero_grad()
                 y_pred = self.forward(x, lengths)
+                #loss = criterion(y_pred, y, lengths)
                 loss = criterion(y_pred, y)
                 loss.backward()
                 nn.utils.clip_grad_value_(self.parameters(), self.grad_clip)
@@ -156,7 +157,7 @@ class RecurrentNeuralNetwork(nn.Module):
             mean_mse = 0.0
             mean_pcc = 0.0
             for i in range(num_of_batches):
-                x, y, lengths = dataset[i]
+                x, y, lengths, _ = dataset[i]
                 y_pred = self.predict(x, lengths)
                 mean_pcc += get_avg_pcc(y, y_pred, lengths)
                 mean_mse += get_avg_mse(y, y_pred, lengths)
@@ -168,7 +169,7 @@ class RecurrentNeuralNetwork(nn.Module):
             mean_mse = 0.0
             mean_pcc = 0.0
             for i in range(validation_num_of_batches):
-                x, y, lengths = validation_dataset[i]
+                x, y, lengths, _ = validation_dataset[i]
                 y_pred = self.predict(x, lengths)
                 mean_pcc += get_avg_pcc(y, y_pred, lengths)
                 mean_mse += get_avg_mse(y, y_pred, lengths)
@@ -177,12 +178,12 @@ class RecurrentNeuralNetwork(nn.Module):
             validation_mses.append(mean_mse)
             validation_pccs.append(mean_pcc)
 
-            if train_mses[-1] < best_mse:
-                best_mse = train_mses[-1]
+            if validation_pccs[-1] > best_pcc:
+                best_pcc = validation_pccs[-1]
                 best_epoch = epoch
                 print(best_epoch)
             
-            print('Epoch: {0:02d} Time: {1} MSE: {2:.6f} Test MSE: {3:.6f} PCC: {4:0.6f} Test PCC: {5:0.6f}'.format(
+            print('Epoch: {0:02d} Time: {1} MSE: {2:.6f} Val MSE: {3:.6f} PCC: {4:0.6f} Val PCC: {5:0.6f}'.format(
                                     epoch, time.strftime('%Y-%m-%d %H:%M:%S'), 
                                     train_mses[-1], validation_mses[-1], 
                                     train_pccs[-1], validation_pccs[-1]))
@@ -238,7 +239,49 @@ class LSTMNeuralNetwork(RecurrentNeuralNetwork):
         out, _ = pad_packed_sequence(packed_out, batch_first=True)
         out = self.output_layer(out)
         return out
+    
 
+class GRUNeuralNetwork(RecurrentNeuralNetwork):
+    def __init__(self, input_size, hidden_size=8, output_layer_depth=1,  num_hidden_layers=1, hidden_scale=1.0, ff_scale=0.001, init_lr=1e-3, gamma=0.99, weight_decay=0.1, grad_clip=1.0):
+        super(GRUNeuralNetwork, self).__init__(input_size, hidden_size, output_layer_depth, num_hidden_layers, hidden_scale, ff_scale, init_lr, gamma, weight_decay, grad_clip)
+
+    def init_layers(self):
+        self.gru_layer = nn.GRU(input_size=self.input_size, 
+                                hidden_size=self.hidden_size,
+                                #nonlinearity='relu',
+                                num_layers=self.num_hidden_layers,
+                                batch_first=True, 
+                                bidirectional=True)
+        self.output_layer = FixedWidthFeedForwardNeuralNetwork(self.hidden_size * 2, 1, self.output_layer_depth, leaky_relu)
+        self._init_weights_()
+
+    def _init_weights_(self):
+        ff_init_method = nn.init.normal_
+        hidden_weight_init_method = nn.init.eye_
+        bias_init_method = nn.init.constant_
+        for name, param in self.gru_layer.named_parameters():
+            if 'weight_hh' in name:
+                hidden_weight_init_method(param)
+                with torch.no_grad():
+                    param.mul_(self.hidden_scale)
+                param.requires_grad_()
+            elif 'weight_ih' in name:
+                ff_init_method(param, std=self.ff_scale)
+            else:
+                bias_init_method(param, 0)
+
+        for name, param in self.output_layer.named_parameters():
+            if 'weight' in name:
+                ff_init_method(param, std=self.ff_scale)
+            else:
+                bias_init_method(param, 0)
+
+    def forward(self, x, lengths):
+        packed_x = pack_padded_sequence(x, lengths, batch_first=True)
+        packed_out, h = self.gru_layer(packed_x)
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)
+        out = self.output_layer(out)
+        return out
 
 
 if __name__ == '__main__':
